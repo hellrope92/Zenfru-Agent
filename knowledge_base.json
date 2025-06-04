@@ -1,0 +1,89 @@
+{
+  "clinic_info": {
+    "name": "BrightSmile Dental Clinic",
+    "address": "123 Main Street, Springfield",
+    "parking_info": "Free parking is available directly in front of the clinic.",
+    "services_offered": [
+      "Routine check-ups",
+      "Fillings/bonding",
+      "Simple RCT on anterior and bicuspid teeth",
+      "Simple extractions on all teeth except for wisdom teeth",
+      "Crowns/Veneers",
+      "Bridges",
+      "Dentures/Partials",
+      "Nightguards",
+      "Extractions",
+      "Implants",
+      "Bone Grafting",
+      "Sinus Lift",
+      "Biopsy"
+    ],
+    "service_pricing": {
+      "Dental Cleaning": "$80",
+      "Teeth Whitening": "$150",
+      "Root Canal Therapy": "$400",
+      "Dental Implants": "$1000",
+      "Braces and Orthodontics": "$2000"
+    },
+    "dentist_team": [
+      {
+        "name": "Dr. Hanna",
+        "specialties": [
+          "Routine check-ups",
+          "Fillings/bonding",
+          "Simple RCT on anterior and bicuspid teeth",
+          "Simple extractions on all teeth except for wisdom teeth",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Nightguards"
+        ]
+      },
+      {
+        "name": "Dr. Lee",
+        "specialties": [
+          "Routine check-ups",
+          "Fillings/bonding",
+          "Simple RCT on anterior and bicuspid teeth",
+          "Simple extractions on all teeth except for wisdom teeth",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Nightguards"
+        ]
+      },
+      {
+        "name": "Dr. Yuzvyak",
+        "specialties": [
+          "Extractions",
+          "Implants",
+          "Bone Grafting",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Sinus Lift",
+          "Biopsy"
+        ]
+      },
+      {
+        "name": "Dr. Parmar",
+        "specialties": [
+          "Extractions",
+          "Implants",
+          "Bone Grafting",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Sinus Lift",
+          "Biopsy"
+        ]
+      }
+    ],
+    "holiday_closures": {
+      "Christmas": "Closed from December 24th to 26th",
+      "New Year's Day": "Closed on January 1st"
+    }
+  },
+  "intake_form_url": "https://clinicdemo.com/intake-form",
+  "callback_policy": "Collect the caller’s name, phone number, and the reason for their call. Let them know the clinic team will return their call on the next business day."
+}

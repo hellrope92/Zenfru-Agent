@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Sarah Lee",
+    "contact": "555-4321",
+    "day": "Monday",
+    "time": "10:00 AM"
+  },
+  {
+    "name": "James Patel",
+    "contact": "555-6789",
+    "day": "Tuesday",
+    "time": "2:00 PM"
+  },
+  {
+    "name": "Emily Chen",
+    "contact": "555-1122",
+    "day": "Wednesday",
+    "time": "11:30 AM"
+  },
+  {
+    "name": "Michael Rivera",
+    "contact": "555-3344",
+    "day": "Thursday",
+    "time": "9:00 AM"
+  },
+  {
+    "name": "Ava Thompson",
+    "contact": "555-5566",
+    "day": "Friday",
+    "time": "1:00 PM"
+  },
+  {
+    "name": "David Kim",
+    "contact": "555-7788",
+    "day": "Friday",
+    "time": "3:30 PM"
+  }
+]

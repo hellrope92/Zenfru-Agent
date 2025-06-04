@@ -1,0 +1,32 @@
+These are the tools
+
+log_conversation_summary
+At the end of the call, summarise the contents of the call and log it for future reference.
+
+get_current_day
+This is used when client wants to book an appointment with words like tomorrow, day after tomorrow. Thus this returns the current day, which for now is Tuesday.Then refer to
+ {{schedule}}.
+
+answer_faq_query(query)
+Answers common questions from the knowledge base, about the clinic, dentists, procedures, expertise, parking, insurance info, payment plans. 
+Answer using {{knowledge_base}}.
+
+log_callback_request(number,time)
+This is used when certain errors occur multiple time, such as failure to book appointments, thus take the number and time to contact the customer back, and store it for actual human representatives.
+
+send_new_patient_form(number)
+Send a new patient intake form to the patient on their number through SMS. Required Parameters are name, number of customer.
+
+reschedule_patient_appointment(name,dob,reason,new_slot)
+This is used to reschedule a patient appointment. For this required parameters are patient name, date of birth, reason for change, and new timings. For new timings need to refer to {{schedule}}.
+
+book_patient_appointment(name,contact info, date,time,patient_type)
+Books an appointment for a patient with their name, contact info, date, time, and patient type.
+Name-Patient Name,
+Contact info- Patient No
+Date-Date of booking
+time-time of booking
+patient type- new or existing.
+
+check_available_slots
+Check {{schedule}} for the given day in parameter, and return the available slots for appointments.

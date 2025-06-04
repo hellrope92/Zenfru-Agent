@@ -1,0 +1,29 @@
+{
+  "Sunday": [
+    {"time": "9:00 AM"},
+    {"time": "12:00 PM"},
+    {"time": "3:00 PM"}
+  ],
+  "Monday": [
+    {"time": "9:00 AM"},
+    {"time": "1:00 PM"},
+    {"time": "4:00 PM"}
+  ],
+  "Tuesday": [],
+  "Wednesday": [
+    {"time": "9:00 AM"},
+    {"time": "12:00 PM"},
+    {"time": "3:00 PM"}
+  ],
+  "Thursday": [
+    {"time": "9:00 AM"},
+    {"time": "1:00 PM"},
+    {"time": "4:00 PM"}
+  ],
+  "Friday": [],
+  "Saturday": [
+    {"time": "9:00 AM"},
+    {"time": "12:00 PM"},
+    {"time": "3:00 PM"}
+  ]
+}
