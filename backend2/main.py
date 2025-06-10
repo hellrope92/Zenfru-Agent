@@ -6,7 +6,7 @@ Uses actual JSON files with simplified logic and console logging
 import json
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
@@ -21,7 +21,7 @@ class ContactInfo(BaseModel):
 
 class BookAppointmentRequest(BaseModel):
     name: str
-    contact: ContactInfo
+    contact: Union[str, Dict[str, Any]]  # Accept both string and dict
     day: str
     date: str  # Added date field
     dob: Optional[str] = None  # Added patient date of birth
@@ -29,7 +29,7 @@ class BookAppointmentRequest(BaseModel):
     is_new_patient: bool
     service_booked: str
     doctor_for_appointment: str
-    patient_details: Optional[Dict[str, Any]] = None
+    patient_details: Optional[Union[str, Dict[str, Any]]] = None  # Accept both string and dict
 
 class CheckSlotsRequest(BaseModel):
     day: str
@@ -257,27 +257,17 @@ async def book_patient_appointment(request: BookAppointmentRequest):
     print(f"   Service: {request.service_booked}")
     print(f"   Doctor: {request.doctor_for_appointment}")
     print(f"   New Patient: {request.is_new_patient}")
-    print(f"   Patient Details: {request.patient_details} )")
-    print(f"   ✅ [SIMULATION] Appointment would be booked!")
+    print(f"   Patient Details: {request.patient_details}")
+    print(f"   ✅ [DEMO] Returning 200 OK!")
     
-    # Generate appointment ID for simulation
+    # Generate appointment ID for demo
     appointment_id = f"APT-{uuid.uuid4().hex[:8].upper()}"
     
     return {
         "success": True,
         "appointment_id": appointment_id,
-        "message": f"[SIMULATION] Appointment would be booked for {request.name}",
-        "appointment_details": {
-            "name": request.name,
-            "contact": request.contact,
-            "day": request.day,
-            "date": request.date,
-            "dob": request.dob,
-            "time": request.time,
-            "service": request.service_booked,
-            "doctor": request.doctor_for_appointment,
-            "patient_details": request.patient_details
-        }
+        "message": f"[DEMO] Appointment request received for {request.name}",
+        "status": "demo_mode"
     }
 
 @app.post("/api/reschedule_patient_appointment")
