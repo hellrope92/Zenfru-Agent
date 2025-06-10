@@ -16,8 +16,8 @@ from pathlib import Path
 # ========== PYDANTIC MODELS ==========
 
 class ContactInfo(BaseModel):
-    number: str
-    email: str
+    number: Optional[str] = None
+    email: Optional[str] = None
 
 class BookAppointmentRequest(BaseModel):
     name: str
