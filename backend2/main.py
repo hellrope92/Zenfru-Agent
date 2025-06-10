@@ -15,9 +15,13 @@ from pathlib import Path
 
 # ========== PYDANTIC MODELS ==========
 
+class ContactInfo(BaseModel):
+    number: str
+    email: str
+
 class BookAppointmentRequest(BaseModel):
     name: str
-    contact: str
+    contact: ContactInfo
     day: str
     date: str  # Added date field
     dob: Optional[str] = None  # Added patient date of birth
@@ -25,7 +29,7 @@ class BookAppointmentRequest(BaseModel):
     is_new_patient: bool
     service_booked: str
     doctor_for_appointment: str
-    patient_details: Optional[str] = None
+    patient_details: Optional[Dict[str, Any]] = None
 
 class CheckSlotsRequest(BaseModel):
     day: str
