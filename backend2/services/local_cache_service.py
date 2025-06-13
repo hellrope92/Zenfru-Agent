@@ -38,6 +38,7 @@ class LocalCacheService:
                 appointment_id TEXT UNIQUE,
                 patient_name TEXT,
                 patient_dob TEXT,
+                patient_phone TEXT,
                 data TEXT,
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -50,6 +51,7 @@ class LocalCacheService:
                 contact_id TEXT UNIQUE,
                 patient_name TEXT,
                 patient_dob TEXT,
+                patient_phone TEXT,
                 data TEXT,
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -119,15 +121,21 @@ class LocalCacheService:
         
         return None
     
-    def store_appointment(self, appointment_id: str, patient_name: str, patient_dob: str, data: Dict[str, Any]):
-        """Store appointment data"""
+    def store_appointment(self, appointment_data: Dict[str, Any]):
+        """Store appointment data with phone number"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # Extract relevant fields from appointment data
+        appointment_id = appointment_data.get("id", "")
+        patient_name = appointment_data.get("patient", {}).get("name", "") if appointment_data.get("patient") else ""
+        patient_dob = appointment_data.get("patient", {}).get("date_of_birth", "") if appointment_data.get("patient") else ""
+        patient_phone = appointment_data.get("patient_phone", "")
+        
         cursor.execute('''
-            INSERT OR REPLACE INTO appointments (appointment_id, patient_name, patient_dob, data, last_updated)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (appointment_id, patient_name, patient_dob, json.dumps(data), datetime.now().isoformat()))
+            INSERT OR REPLACE INTO appointments (appointment_id, patient_name, patient_dob, patient_phone, data, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (appointment_id, patient_name, patient_dob, patient_phone, json.dumps(appointment_data), datetime.now().isoformat()))
         
         conn.commit()
         conn.close()
@@ -141,6 +149,28 @@ class LocalCacheService:
             SELECT data, last_updated FROM appointments 
             WHERE LOWER(patient_name) = LOWER(?) AND patient_dob = ?
         ''', (patient_name, patient_dob))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        appointments = []
+        for result in results:
+            # Check if data is still fresh (24 hours)
+            last_updated = datetime.fromisoformat(result[1])
+            if datetime.now() - last_updated < timedelta(hours=24):
+                appointments.append(json.loads(result[0]))
+        
+        return appointments
+    
+    def get_appointments_by_phone(self, patient_phone: str) -> List[Dict[str, Any]]:
+        """Get appointments for a specific patient by phone number"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT data, last_updated FROM appointments 
+            WHERE patient_phone = ?
+        ''', (patient_phone,))
         
         results = cursor.fetchall()
         conn.close()
