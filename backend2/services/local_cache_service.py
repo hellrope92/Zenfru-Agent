@@ -44,6 +44,17 @@ class LocalCacheService:
             )
         ''')
         
+        # Add patient_phone column if it doesn't exist (migration for existing databases)
+        try:
+            cursor.execute('ALTER TABLE appointments ADD COLUMN patient_phone TEXT')
+            print("Added patient_phone column to appointments table")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                # Column already exists, which is fine
+                pass
+            else:
+                print(f"Error adding patient_phone column: {e}")
+        
         # Contacts table (refresh every 24 hours)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS contacts (
@@ -56,6 +67,17 @@ class LocalCacheService:
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Add patient_phone column to contacts table if it doesn't exist
+        try:
+            cursor.execute('ALTER TABLE contacts ADD COLUMN patient_phone TEXT')
+            print("Added patient_phone column to contacts table")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" in str(e).lower():
+                # Column already exists, which is fine
+                pass
+            else:
+                print(f"Error adding patient_phone column to contacts: {e}")
         
         # Cache metadata table
         cursor.execute('''
@@ -122,20 +144,34 @@ class LocalCacheService:
         return None
     
     def store_appointment(self, appointment_data: Dict[str, Any]):
-        """Store appointment data with phone number"""
+        """Store appointment data using existing schema fields"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         # Extract relevant fields from appointment data
         appointment_id = appointment_data.get("id", "")
-        patient_name = appointment_data.get("patient", {}).get("name", "") if appointment_data.get("patient") else ""
-        patient_dob = appointment_data.get("patient", {}).get("date_of_birth", "") if appointment_data.get("patient") else ""
-        patient_phone = appointment_data.get("patient_phone", "")
+        
+        # Try to get patient name from contact information
+        contact = appointment_data.get("contact", {})
+        given_name = contact.get("given_name", "")
+        family_name = contact.get("family_name", "")
+        contact_name = contact.get("name", "")
+        
+        if contact_name:
+            patient_name = contact_name
+        elif given_name and family_name:
+            patient_name = f"{given_name} {family_name}"
+        elif given_name:
+            patient_name = given_name
+        else:
+            patient_name = ""
+            
+        patient_dob = contact.get("birth_date", "")
         
         cursor.execute('''
-            INSERT OR REPLACE INTO appointments (appointment_id, patient_name, patient_dob, patient_phone, data, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (appointment_id, patient_name, patient_dob, patient_phone, json.dumps(appointment_data), datetime.now().isoformat()))
+            INSERT OR REPLACE INTO appointments (appointment_id, patient_name, patient_dob, data, last_updated)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (appointment_id, patient_name, patient_dob, json.dumps(appointment_data), datetime.now().isoformat()))
         
         conn.commit()
         conn.close()
@@ -163,26 +199,37 @@ class LocalCacheService:
         return appointments
     
     def get_appointments_by_phone(self, patient_phone: str) -> List[Dict[str, Any]]:
-        """Get appointments for a specific patient by phone number"""
+        """Get appointments for a specific patient by phone number by checking contact primary_phone_number"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # Get all appointments and check their contact data for matching phone numbers
         cursor.execute('''
-            SELECT data, last_updated FROM appointments 
-            WHERE patient_phone = ?
-        ''', (patient_phone,))
+            SELECT data, last_updated FROM appointments
+        ''')
         
         results = cursor.fetchall()
         conn.close()
         
-        appointments = []
+        matching_appointments = []
         for result in results:
             # Check if data is still fresh (24 hours)
             last_updated = datetime.fromisoformat(result[1])
             if datetime.now() - last_updated < timedelta(hours=24):
-                appointments.append(json.loads(result[0]))
+                appointment_data = json.loads(result[0])
+                
+                # Check if this appointment's contact has the matching phone number
+                contact = appointment_data.get("contact", {})
+                primary_phone = contact.get("primary_phone_number", "")
+                
+                # Normalize both phone numbers for comparison
+                normalized_primary = primary_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                normalized_search = patient_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                
+                if normalized_primary == normalized_search:
+                    matching_appointments.append(appointment_data)
         
-        return appointments
+        return matching_appointments
     
     def store_contact(self, contact_id: str, patient_name: str, patient_dob: str, data: Dict[str, Any]):
         """Store contact data"""

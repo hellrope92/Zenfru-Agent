@@ -86,10 +86,9 @@ async def get_appointment_details(request: AppointmentDetailsRequest):
                         appointments_data = appointments_response.json()
                         appointments = appointments_data.get("appointments", [])
                         
-                        # Cache the appointment data with phone number
+                        # Cache the appointment data
                         if appointments:
                             for appointment in appointments:
-                                appointment["patient_phone"] = normalized_phone
                                 cache_service.store_appointment(appointment)
                         
                         return {

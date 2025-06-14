@@ -81,8 +81,7 @@ class ConversationSummaryRequest(BaseModel):
 
 # New models for the core APIs
 class GetAppointmentRequest(BaseModel):
-    name: str
-    dob: Optional[str] = None  # DOB is optional since the API doesn't provide it for matching
+    phone: str
 
 class GetContactRequest(BaseModel):
     name: str

@@ -1,12 +1,11 @@
 """
 Get Appointment API endpoint
 Retrieves existing appointment information for a patient
-Parameters: name (required), dob (optional)
+Parameters: phone (required)
 Used for rescheduling and confirming appointments
 Uses local caching with 24-hour refresh for appointments
 
-Note: Matching is performed by patient name only since the Kolla API 
-appointment structure doesn't include DOB information.
+Note: Matching is performed by patient phone number for accurate identification.
 """
 
 import requests
@@ -35,121 +34,177 @@ cache_service = LocalCacheService()
 async def get_appointment(request: GetAppointmentRequest):
     """
     Retrieves existing appointment information for a patient
-    Parameters: name (required), dob (optional)
+    Parameters: phone (required)
     Used for rescheduling and confirming appointments
-      Note: Matching is performed by name only since DOB is not available in the API response.
+    Note: Matching is performed by phone number for accurate patient identification.
     """
     try:
-        # Print DOB if provided (as requested)
-        if request.dob:
-            print(f"Fetching appointments for patient DOB: {request.dob}")
+        # Print phone number as requested
+        print(f"Fetching appointments for patient phone: {request.phone}")
+        
+        # Normalize phone number (remove spaces, dashes, etc.)
+        normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
             
-        # First check local cache (using name only for matching)
-        cached_appointments = cache_service.get_appointments_by_patient(request.name, request.dob or "")
+        # First check local cache (using phone number for matching)
+        cached_appointments = cache_service.get_appointments_by_phone(normalized_phone)
         
         if cached_appointments:
+            # Sort cached appointments by start_time to get the latest
+            sorted_appointments = sorted(cached_appointments, key=lambda x: x.get("start_time", ""), reverse=True)
+            latest_appointment = sorted_appointments[0] if sorted_appointments else None
+            
             return {
                 "success": True,
-                "patient_name": request.name,
-                "patient_dob": request.dob,
-                "appointments": cached_appointments,
-                "total_appointments": len(cached_appointments),
+                "patient_phone": request.phone,
+                "appointment": latest_appointment,
                 "source": "cache"
             }
-          # If not in cache or cache is stale, fetch from Kolla API
-        appointments = await fetch_appointments_from_kolla(request.name, request.dob or "")
+            
+        # If not in cache or cache is stale, fetch from Kolla API
+        appointments = await fetch_appointments_from_kolla(normalized_phone)
         
         if appointments:
             # Store in cache
             for appointment in appointments:
-                appointment_id = appointment.get("id", f"apt_{request.name}_{request.dob or 'unknown'}_{datetime.now().timestamp()}")
-                cache_service.store_appointment(appointment_id, request.name, request.dob or "", appointment)
+                appointment["patient_phone"] = normalized_phone
+                cache_service.store_appointment(appointment)
+            
+            # Get the latest appointment (first one since they're sorted by start_time desc)
+            latest_appointment = appointments[0] if appointments else None
             
             return {
                 "success": True,
-                "patient_name": request.name,
-                "patient_dob": request.dob,
-                "appointments": appointments,
-                "total_appointments": len(appointments),
+                "patient_phone": request.phone,
+                "appointment": latest_appointment,
                 "source": "api"
             }
         else:
             return {
                 "success": False,
                 "message": "No appointments found for the specified patient",
-                "patient_name": request.name,
-                "patient_dob": request.dob,
-                "appointments": [],
-                "total_appointments": 0
+                "patient_phone": request.phone,
+                "appointment": None
             }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving appointments: {str(e)}")
 
-async def fetch_appointments_from_kolla(patient_name: str, patient_dob: str = "") -> List[Dict[str, Any]]:
+async def fetch_appointments_from_kolla(patient_phone: str) -> List[Dict[str, Any]]:
     """
-    Fetch appointments from Kolla API for a specific patient
+    Fetch appointments from Kolla API for a specific patient using phone number
     
-    Matches appointments by patient name only since DOB is not available in the API response.
+    First searches for contact by phone number, then fetches their appointments using contact_id.
     """
     try:
-        getkolla_service = GetKollaService()
+        # Step 1: Search for contacts (patients) by phone number first
+        contacts_search_url = f"{KOLLA_BASE_URL}/contacts"
         
-        # Search for appointments in the next 60 days and past 30 days
-        today = datetime.now()
-        start_date = (today - timedelta(days=30)).strftime("%Y-%m-%d")
-        end_date = (today + timedelta(days=60)).strftime("%Y-%m-%d")        # Get all appointments in the date range
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-        appointments_list = getkolla_service.get_booked_appointments(start_dt, end_dt)
+        contacts_response = requests.get(
+            contacts_search_url,
+            headers=KOLLA_HEADERS,
+            timeout=10
+        )
         
-        if not appointments_list:
-            return []        # Filter appointments by patient name
-        patient_appointments = []
+        if contacts_response.status_code != 200:
+            print(f"Error searching for contacts: {contacts_response.status_code}")
+            return []
+            
+        contacts_data = contacts_response.json()
         
-        for appointment in appointments_list:
-            # Extract patient information from contact field (based on actual API structure)
-            contact_info = appointment.get("contact", {})
-            
-            # Build patient name from contact information
-            given_name = contact_info.get("given_name", "").strip()
-            family_name = contact_info.get("family_name", "").strip()
-            contact_name = contact_info.get("name", "").strip()
-            
-            # Try different name combinations
-            if contact_name:
-                apt_patient_name = contact_name
-            elif given_name and family_name:
-                apt_patient_name = f"{given_name} {family_name}"
-            elif given_name:
-                apt_patient_name = given_name
-            else:
-                apt_patient_name = ""
-            
-            # Normalize names for comparison (case-insensitive, remove extra spaces)
-            if (apt_patient_name and 
-                apt_patient_name.lower().replace(" ", "") == patient_name.lower().replace(" ", "")):                # Enrich appointment data
-                enriched_appointment = {
-                    **appointment,
-                    "patient_matched": True,
-                    "search_name": patient_name,
-                    "search_dob": patient_dob,
-                    "matched_contact_name": apt_patient_name,
-                    "appointment_date": appointment.get("start_time", "").split("T")[0] if appointment.get("start_time") else None,
-                    "appointment_time": appointment.get("start_time", "").split("T")[1] if appointment.get("start_time") else None,
-                    "status": "confirmed" if appointment.get("confirmed") else "unconfirmed",
-                    "cancelled": appointment.get("cancelled", False),
-                    "completed": appointment.get("completed", False),
-                    "duration_minutes": calculate_duration(appointment.get("start_time"), appointment.get("end_time")),
-                    "provider": appointment.get("providers", [{}])[0].get("display_name", "") if appointment.get("providers") else "",
-                    "operatory": appointment.get("resources", [{}])[0].get("display_name", "") if appointment.get("resources") else "",
-                    "notes": appointment.get("notes", "")
-                }
+        # Step 2: Find contact with matching phone number
+        matching_contact = None
+        for contact in contacts_data.get("contacts", []):
+            if contact.get("type") == "PATIENT":
+                # Check all phone numbers for this contact
+                phone_numbers = contact.get("phone_numbers", [])
+                primary_phone = contact.get("primary_phone_number", "")
                 
-                patient_appointments.append(enriched_appointment)
+                # Normalize phone numbers for comparison
+                contact_phones = [phone.get("number", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "") 
+                                for phone in phone_numbers]
+                normalized_primary = primary_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                
+                if patient_phone in contact_phones or patient_phone == normalized_primary:
+                    matching_contact = contact
+                    break
         
-        return patient_appointments
+        if not matching_contact:
+            print(f"No patient found with phone number: {patient_phone}")
+            return []
+            
+        # Step 3: Get contact_id from the matching contact
+        contact_remote_id = matching_contact.get("remote_id")  # This is the contact_id we need
+        contact_name = matching_contact.get("name")  # This is like "contacts/13"
         
+        if not contact_remote_id and not contact_name:
+            print("Contact ID not found in response")
+            return []
+            
+        print(f"Found matching contact: {contact_name} with remote_id: {contact_remote_id}")
+        
+        # Step 4: Fetch all appointments and filter by contact_id
+        appointments_url = f"{KOLLA_BASE_URL}/appointments"
+        
+        appointments_response = requests.get(
+            appointments_url,
+            headers=KOLLA_HEADERS,
+            timeout=10
+        )
+        
+        if appointments_response.status_code != 200:
+            print(f"Error fetching appointments: {appointments_response.status_code}")
+            return []
+            
+        appointments_data = appointments_response.json()
+        all_appointments = appointments_data.get("appointments", [])
+        
+        # Step 5: Filter appointments by contact_id and get the latest ones
+        patient_appointments = []
+        for appointment in all_appointments:
+            appointment_contact_id = appointment.get("contact_id")
+            
+            # Match either by contact name or remote_id
+            if (appointment_contact_id == contact_name or 
+                appointment_contact_id == f"contacts/{contact_remote_id}"):
+                patient_appointments.append(appointment)
+        
+        if not patient_appointments:
+            print(f"No appointments found for contact_id: {contact_name}")
+            return []
+        
+        # Step 6: Sort appointments by start_time to get the latest ones first
+        patient_appointments.sort(key=lambda x: x.get("start_time", ""), reverse=True)
+        
+        # Step 7: Enrich appointment data
+        enriched_appointments = []
+        for appointment in patient_appointments:
+            enriched_appointment = {
+                **appointment,
+                "patient_matched": True,
+                "search_phone": patient_phone,
+                "patient_details": matching_contact,
+                "appointment_date": appointment.get("start_time", "").split("T")[0] if appointment.get("start_time") else None,
+                "appointment_time": appointment.get("start_time", "").split("T")[1] if appointment.get("start_time") else None,
+                "wall_date": appointment.get("wall_start_time", "").split(" ")[0] if appointment.get("wall_start_time") else None,
+                "wall_time": appointment.get("wall_start_time", "").split(" ")[1] if appointment.get("wall_start_time") else None,
+                "status": "confirmed" if appointment.get("confirmed") else "unconfirmed",
+                "cancelled": appointment.get("cancelled", False),
+                "completed": appointment.get("completed", False),
+                "duration_minutes": calculate_duration(appointment.get("start_time"), appointment.get("end_time")),
+                "provider": appointment.get("providers", [{}])[0].get("display_name", "") if appointment.get("providers") else "",
+                "operatory": appointment.get("resources", [{}])[0].get("display_name", "") if appointment.get("resources") else "",
+                "notes": appointment.get("notes", ""),
+                "short_description": appointment.get("short_description", "")
+            }
+            
+            enriched_appointments.append(enriched_appointment)
+        
+        print(f"Found {len(enriched_appointments)} appointments for patient")
+        return enriched_appointments
+        
+    except requests.RequestException as e:
+        print(f"API request failed: {e}")
+        return []
     except Exception as e:
         print(f"Error fetching appointments from Kolla: {e}")
         return []
@@ -165,43 +220,34 @@ def calculate_duration(start_time: str, end_time: str) -> Optional[int]:
         pass
     return None
 
-@router.get("/get_appointment/{patient_name}/{patient_dob}")
-async def get_appointment_by_url(patient_name: str, patient_dob: str = ""):
+@router.get("/get_appointment_by_phone/{patient_phone}")
+async def get_appointment_by_phone_only(patient_phone: str):
     """
-    Alternative GET endpoint for retrieving appointments
-    URL format: /api/get_appointment/{patient_name}/{patient_dob}
-    Note: patient_dob is optional and not used for matching
+    GET endpoint for retrieving appointments by phone number only
+    URL format: /api/get_appointment_by_phone/{patient_phone}
     """
-    request = GetAppointmentRequest(name=patient_name, dob=patient_dob if patient_dob else None)
-    return await get_appointment(request)
-
-@router.get("/get_appointment/{patient_name}")
-async def get_appointment_by_name_only(patient_name: str):
-    """
-    GET endpoint for retrieving appointments by name only
-    URL format: /api/get_appointment/{patient_name}
-    """
-    request = GetAppointmentRequest(name=patient_name)
+    request = GetAppointmentRequest(phone=patient_phone)
     return await get_appointment(request)
 
 @router.post("/get_appointment/refresh")
 async def refresh_appointments_cache(request: GetAppointmentRequest):
     """Manually refresh the appointments cache for a specific patient"""
     try:
+        # Normalize phone number
+        normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        
         # Force fetch from API
-        appointments = await fetch_appointments_from_kolla(request.name, request.dob or "")
+        appointments = await fetch_appointments_from_kolla(normalized_phone)
         
         # Update cache
         if appointments:
             for appointment in appointments:
-                appointment_id = appointment.get("id", f"apt_{request.name}_{request.dob or 'unknown'}_{datetime.now().timestamp()}")
-                cache_service.store_appointment(appointment_id, request.name, request.dob or "", appointment)
+                cache_service.store_appointment(appointment)
         
         return {
             "success": True,
             "message": "Appointments cache refreshed",
-            "patient_name": request.name,
-            "patient_dob": request.dob,
+            "patient_phone": request.phone,
             "appointments_found": len(appointments),
             "appointments": appointments
         }
@@ -211,8 +257,7 @@ async def refresh_appointments_cache(request: GetAppointmentRequest):
 
 @router.get("/appointments/search")
 async def search_appointments(
-    name: Optional[str] = None,
-    dob: Optional[str] = None,
+    phone: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ):
@@ -220,9 +265,9 @@ async def search_appointments(
     Search appointments with flexible parameters
     """
     try:
-        if name and dob:
+        if phone:
             # Use the main get_appointment function
-            request = GetAppointmentRequest(name=name, dob=dob)
+            request = GetAppointmentRequest(phone=phone)
             return await get_appointment(request)
         
         # For other search criteria, fetch from API
@@ -238,8 +283,7 @@ async def search_appointments(
         return {
             "success": True,
             "search_criteria": {
-                "name": name,
-                "dob": dob,
+                "phone": phone,
                 "start_date": start_date,
                 "end_date": end_date
             },
