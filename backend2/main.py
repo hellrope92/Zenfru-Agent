@@ -1,6 +1,7 @@
 """
 Simple FastAPI backend for BrightSmile Dental Clinic AI Assistant
 Uses actual JSON files with simplified logic and console logging
+Updated to use GetKolla service for actual appointment booking
 """
 
 import json
@@ -12,6 +13,8 @@ from pydantic import BaseModel
 import uvicorn
 import os
 from pathlib import Path
+from services.getkolla_service import GetKollaService
+from services.availability_service import AvailabilityService
 
 # ========== PYDANTIC MODELS ==========
 
@@ -33,6 +36,10 @@ class BookAppointmentRequest(BaseModel):
 
 class CheckSlotsRequest(BaseModel):
     day: str
+
+class CheckServiceSlotsRequest(BaseModel):
+    service_type: str
+    date: Optional[str] = None  # Specific date (YYYY-MM-DD), if not provided will check next 7 days
 
 class RescheduleRequest(BaseModel):
     name: str
@@ -184,6 +191,45 @@ def search_knowledge_base(query: str) -> tuple[str, str]:
     # Default response
     return "I don't have specific information about that. Please call our office for more details.", "general"
 
+def parse_contact_info(contact_data: Union[str, Dict[str, Any]]) -> Dict[str, str]:
+    """Parse contact information from various formats"""
+    if isinstance(contact_data, str):
+        # Assume it's a phone number if it's a string
+        return {"phone": contact_data, "email": ""}
+    elif isinstance(contact_data, dict):
+        return {
+            "phone": contact_data.get("number", contact_data.get("phone", "")),
+            "email": contact_data.get("email", "")
+        }
+    else:
+        return {"phone": "", "email": ""}
+
+def convert_time_to_datetime(date_str: str, time_str: str) -> datetime:
+    """Convert date and time strings to datetime object"""
+    try:
+        # Parse the date
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        
+        # Parse the time (handle both 12-hour and 24-hour formats)
+        if "AM" in time_str or "PM" in time_str:
+            time_obj = datetime.strptime(time_str, "%I:%M %p")
+        else:
+            time_obj = datetime.strptime(time_str, "%H:%M")
+        
+        # Combine date and time
+        combined_datetime = date_obj.replace(
+            hour=time_obj.hour,
+            minute=time_obj.minute,
+            second=0,
+            microsecond=0
+        )
+        
+        return combined_datetime
+    except Exception as e:
+        print(f"Error converting time: {e}")
+        # Return a default datetime if parsing fails
+        return datetime.now()
+
 # ========== RUNTIME STORAGE ==========
 
 # Runtime storage for testing (not persistent)
@@ -198,6 +244,17 @@ app = FastAPI(
     description="Simple backend using actual JSON files with console logging",
     version="1.0.0"
 )
+
+# Initialize GetKolla service
+getkolla_service = GetKollaService()
+
+# Initialize Availability service (assuming this exists)
+try:
+    from services.availability_service import SimpleAvailabilityService
+    simple_availability_service = SimpleAvailabilityService()
+except ImportError:
+    print("⚠️ SimpleAvailabilityService not found, using fallback")
+    simple_availability_service = None
 
 # ========== TOOL ENDPOINTS ==========
 
@@ -215,37 +272,68 @@ async def get_current_day():
 
 @app.post("/api/check_available_slots")
 async def check_available_slots(request: CheckSlotsRequest):
-    """Check available appointment slots for next 5 days"""
+    """Check available appointment slots for next 7 days using GetKolla API"""
     current_day = datetime.now().strftime("%A")
-    next_days = get_next_n_days(5)
+    current_date = datetime.now().strftime("%Y-%m-%d")
     
     print(f"🔍 CHECK_AVAILABLE_SLOTS:")
-    print(f"   Current Day: {current_day}")
-    print(f"   Checking next 5 days: {next_days}")
+    print(f"   Current Day: {current_day} ({current_date})")
+    print(f"   Checking next 7 days with GetKolla API integration...")
     
-    all_available_slots = []
-    
-    for day in next_days:
-        day_slots = get_available_slots_for_day(day)
-        if day_slots:
-            print(f"   📅 {day}: {len(day_slots)} slots available")
-            for slot in day_slots:
-                slot["day"] = day  # Add day to each slot
-                all_available_slots.append(slot)
-        else:
-            print(f"   📅 {day}: No slots available (closed or fully booked)")
-    
-    print(f"   ✅ Total available slots found: {len(all_available_slots)}")
-    
-    return {
-        "available_slots": all_available_slots,
-        "days_checked": next_days,
-        "current_day": current_day
-    }
+    try:
+        # Get available slots from GetKolla service
+        available_slots_by_day = getkolla_service.get_available_slots_next_7_days()
+        
+        # Transform the data to match the expected format
+        all_available_slots = []
+        days_checked = []
+        
+        for day_info, slots in available_slots_by_day.items():
+            day_name = day_info.split(' (')[0]  # Extract day name from "Monday (2025-06-18)"
+            days_checked.append(day_name)
+            
+            for slot_time in slots:
+                all_available_slots.append({
+                    "day": day_name,
+                    "time": slot_time,
+                    "available": True,
+                    "doctor": getkolla_service.schedule.get(day_name.split()[0], {}).get("doctor", "Available Doctor")
+                })
+        
+        print(f"   ✅ Total available slots found: {len(all_available_slots)}")
+        print(f"   📅 Days with availability: {len(available_slots_by_day)}")
+        
+        return {
+            "available_slots": all_available_slots,
+            "days_checked": days_checked,
+            "current_day": current_day,
+            "slots_by_day": available_slots_by_day,
+            "total_slots": len(all_available_slots)
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error fetching available slots: {e}")
+        # Fallback to original logic if GetKolla service fails
+        next_days = get_next_n_days(5)
+        all_available_slots = []
+        
+        for day in next_days:
+            day_slots = get_available_slots_for_day(day)
+            if day_slots:
+                for slot in day_slots:
+                    slot["day"] = day
+                    all_available_slots.append(slot)
+        
+        return {
+            "available_slots": all_available_slots,
+            "days_checked": next_days,
+            "current_day": current_day,
+            "error": "GetKolla API unavailable, using fallback logic"
+        }
 
 @app.post("/api/book_patient_appointment")
 async def book_patient_appointment(request: BookAppointmentRequest):
-    """Book a new patient appointment (print only)"""
+    """Book a new patient appointment using GetKolla API"""
     
     print(f"📅 BOOK_PATIENT_APPOINTMENT:")
     print(f"   Name: {request.name}")
@@ -258,17 +346,72 @@ async def book_patient_appointment(request: BookAppointmentRequest):
     print(f"   Doctor: {request.doctor_for_appointment}")
     print(f"   New Patient: {request.is_new_patient}")
     print(f"   Patient Details: {request.patient_details}")
-    print(f"   ✅ [DEMO] Returning 200 OK!")
     
-    # Generate appointment ID for demo
-    appointment_id = f"APT-{uuid.uuid4().hex[:8].upper()}"
-    
-    return {
-        "success": True,
-        "appointment_id": appointment_id,
-        "message": f"[DEMO] Appointment request received for {request.name}",
-        "status": "demo_mode"
-    }
+    try:
+        # Parse contact information
+        contact_info = parse_contact_info(request.contact)
+        
+        # Convert appointment time to datetime objects
+        start_datetime = convert_time_to_datetime(request.date, request.time)
+        
+        # Calculate end time based on service type (default 30 minutes)
+        service_duration = getkolla_service._get_service_duration(request.service_booked)
+        end_datetime = start_datetime + timedelta(minutes=service_duration)
+        
+        # Prepare appointment data for GetKolla API
+        appointment_data = {
+            "name": request.name,
+            "contact": contact_info.get("phone", ""),
+            "email": contact_info.get("email", ""),
+            "start_time": start_datetime.isoformat(),
+            "end_time": end_datetime.isoformat(),
+            "service_booked": request.service_booked,
+            "is_new_patient": request.is_new_patient,
+            "dob": request.dob,
+            "patient_details": request.patient_details
+        }
+        
+        # Attempt to book the appointment through GetKolla API
+        booking_success = getkolla_service.book_appointment(appointment_data)
+        
+        if booking_success:
+            # Generate appointment ID for success response
+            appointment_id = f"APT-{uuid.uuid4().hex[:8].upper()}"
+            
+            print(f"   ✅ Appointment successfully booked through GetKolla API!")
+            print(f"   📋 Appointment ID: {appointment_id}")
+            
+            return {
+                "success": True,
+                "appointment_id": appointment_id,
+                "message": f"Appointment successfully booked for {request.name}",
+                "status": "confirmed",
+                "appointment_details": {
+                    "name": request.name,
+                    "date": request.date,
+                    "time": request.time,
+                    "service": request.service_booked,
+                    "doctor": request.doctor_for_appointment,
+                    "duration_minutes": service_duration
+                }
+            }
+        else:
+            print(f"   ❌ Failed to book appointment through GetKolla API")
+            return {
+                "success": False,
+                "message": f"Failed to book appointment for {request.name}. Please try again or contact the clinic directly.",
+                "status": "failed",
+                "error": "booking_failed"
+            }
+            
+    except Exception as e:
+        print(f"   ❌ Error booking appointment: {e}")
+        return {
+            "success": False,
+            "message": f"An error occurred while booking the appointment. Please contact the clinic directly.",
+            "status": "error",
+            "error": str(e)
+        }
 
 @app.post("/api/reschedule_patient_appointment")
 async def reschedule_patient_appointment(request: RescheduleRequest):
@@ -406,11 +549,12 @@ async def log_conversation_summary(request: ConversationSummaryRequest):
         "message": "Conversation summary logged successfully"
     }
 
-# ========== UTILITY ENDPOINTS ==========
-
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
+    # Test GetKolla API connectivity
+    kolla_status = getkolla_service.health_check()
+    
     return {
         "status": "healthy",
         "service": "BrightSmile Dental AI Assistant",
@@ -419,8 +563,53 @@ async def health_check():
             "schedule": len(SCHEDULE) > 0,
             "bookings": len(BOOKINGS) > 0,
             "knowledge_base": len(KNOWLEDGE_BASE) > 0
+        },
+        "getkolla_api": {
+            "status": "connected" if kolla_status else "disconnected",
+            "available": kolla_status
         }
     }
+
+@app.get("/api/getkolla/test")
+async def test_getkolla_api():
+    """Test GetKolla API connectivity and data fetch"""
+    print("🔧 TESTING_GETKOLLA_API:")
+    
+    try:
+        # Test API connectivity
+        health_status = getkolla_service.health_check()
+        print(f"   Health Check: {'✅ Connected' if health_status else '❌ Failed'}")
+        
+        # Test fetching appointments
+        start_date = datetime.now()
+        end_date = start_date + timedelta(days=7)
+        appointments = getkolla_service.get_booked_appointments(start_date, end_date)
+        print(f"   Appointments Found: {len(appointments)}")
+        
+        # Test available slots calculation
+        available_slots = getkolla_service.get_available_slots_next_7_days()
+        print(f"   Available Slots: {len(available_slots)} days with slots")
+        
+        return {
+            "getkolla_api": {
+                "health_check": health_status,
+                "appointments_found": len(appointments),
+                "available_slots_days": len(available_slots),
+                "sample_appointments": appointments[:2] if appointments else [],
+                "available_slots_summary": {day: len(slots) for day, slots in available_slots.items()}
+            },
+            "status": "success" if health_status else "api_unavailable"
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error testing GetKolla API: {e}")
+        return {
+            "getkolla_api": {
+                "error": str(e),
+                "health_check": False
+            },
+            "status": "error"
+        }
 
 @app.get("/api/debug/schedule")
 async def get_schedule():
@@ -457,26 +646,114 @@ async def get_knowledge_base():
         "doctors_count": len(KNOWLEDGE_BASE.get("clinic_info", {}).get("dentist_team", []))
     }
 
-# ========== MAIN ==========
-
-if __name__ == "__main__":
-    print("🦷 Starting BrightSmile Dental AI Assistant - Simple Backend")
-    print("📋 Available endpoints:")
-    print("   - GET  /api/get_current_day")
-    print("   - POST /api/check_available_slots (shows next 5 days)")
-    print("   - POST /api/book_patient_appointment (print only)")
-    print("   - POST /api/reschedule_patient_appointment (print only)")
-    print("   - POST /api/send_new_patient_form")
-    print("   - POST /api/log_callback_request")
-    print("   - POST /api/answer_faq_query (uses knowledge_base.json)")
-    print("   - POST /api/log_conversation_summary")
-    print("   - GET  /api/health")
-    print("   - GET  /api/debug/* (for testing)")
-    print()
-    print(f"📊 Data Status:")
-    print(f"   Schedule: {len(SCHEDULE)} days loaded")
-    print(f"   Existing Bookings: {len(BOOKINGS)} appointments")
-    print(f"   Knowledge Base: {len(KNOWLEDGE_BASE)} sections")
-    print()
+@app.get("/api/get_schedule")
+async def get_schedule(days: int = 7):
+    """Get available appointment schedule for the next N days using GetKolla API"""
+    print(f"📅 GET_SCHEDULE: Fetching schedule for next {days} days")
     
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    try:
+        if days == 7:
+            # Use the optimized method for 7 days
+            available_slots_by_day = getkolla_service.get_available_slots_next_7_days()
+            
+            # Transform to a more structured format
+            schedule_data = {}
+            total_available_slots = 0
+            
+            for day_info, slots in available_slots_by_day.items():
+                # Extract day name and date from "Monday (2025-06-18)" format
+                parts = day_info.split(' (')
+                day_name = parts[0]
+                date_str = parts[1].rstrip(')')
+                
+                # Get doctor info from schedule
+                day_schedule = getkolla_service.schedule.get(day_name, {})
+                doctor = day_schedule.get("doctor", "Available Doctor")
+                open_time = day_schedule.get("open", "9:00 AM")
+                close_time = day_schedule.get("close", "5:00 PM")
+                
+                schedule_data[date_str] = {
+                    "day": day_name,
+                    "date": date_str,
+                    "status": "Open" if slots else "No availability",
+                    "open_time": open_time,
+                    "close_time": close_time,
+                    "doctor": doctor,
+                    "available_slots": slots,
+                    "total_slots": len(slots)
+                }
+                total_available_slots += len(slots)
+        else:
+            # For custom number of days, calculate individually
+            schedule_data = {}
+            total_available_slots = 0
+            today = datetime.now()
+            
+            for i in range(days):
+                target_date = today + timedelta(days=i)
+                date_str = target_date.strftime("%Y-%m-%d")
+                day_name = target_date.strftime("%A")
+                
+                # Get available slots for this specific date
+                slots = getkolla_service.get_available_slots_for_date(target_date)
+                
+                # Get doctor info from schedule
+                day_schedule = getkolla_service.schedule.get(day_name, {})
+                doctor = day_schedule.get("doctor", "Available Doctor")
+                open_time = day_schedule.get("open", "9:00 AM")
+                close_time = day_schedule.get("close", "5:00 PM")
+                status = day_schedule.get("status", "Open")
+                
+                if status == "Closed":
+                    schedule_data[date_str] = {
+                        "day": day_name,
+                        "date": date_str,
+                        "status": "Closed",
+                        "open_time": None,
+                        "close_time": None,
+                        "doctor": None,
+                        "available_slots": [],
+                        "total_slots": 0
+                    }
+                else:
+                    schedule_data[date_str] = {
+                        "day": day_name,
+                        "date": date_str,
+                        "status": "Open" if slots else "No availability",
+                        "open_time": open_time,
+                        "close_time": close_time,
+                        "doctor": doctor,
+                        "available_slots": slots,
+                        "total_slots": len(slots)
+                    }
+                    total_available_slots += len(slots)
+        
+        print(f"   ✅ Schedule generated successfully")
+        print(f"   📊 Total available slots: {total_available_slots}")
+        print(f"   📅 Days with availability: {len([d for d in schedule_data.values() if d['total_slots'] > 0])}")
+        
+        return {
+            "success": True,
+            "days_requested": days,
+            "schedule": schedule_data,
+            "summary": {
+                "total_available_slots": total_available_slots,
+                "days_with_availability": len([d for d in schedule_data.values() if d['total_slots'] > 0]),
+                "days_closed": len([d for d in schedule_data.values() if d['status'] == 'Closed']),
+                "generated_at": datetime.now().isoformat()
+            }
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error generating schedule: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "schedule": {},
+            "summary": {
+                "total_available_slots": 0,
+                "days_with_availability": 0,
+                "days_closed": 0,
+                "generated_at": datetime.now().isoformat()
+            }
+        }
