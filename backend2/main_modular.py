@@ -121,12 +121,13 @@ def create_schedule_endpoints():
         request: schedule_api.CheckSlotsRequest,
         getkolla_service: GetKollaService = Depends(get_getkolla_service),
         schedule: Dict = Depends(get_schedule),
-        bookings: List = Depends(get_bookings)    ):
+        bookings: List = Depends(get_bookings)
+    ):
         """Check available appointment slots for next 7 days using GetKolla API"""
         return await schedule_api.check_available_slots(request, getkolla_service, schedule, bookings)
     
     @app.get("/api/get_schedule", tags=["schedule"])
-    async def get_schedule_endpoint(
+    async def get_schedule(
         days: int = 7,
         getkolla_service: GetKollaService = Depends(get_getkolla_service)
     ):

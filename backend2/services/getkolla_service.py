@@ -507,3 +507,69 @@ class GetKollaService:
                 "requested_date": requested_date,
                 "generated_at": datetime.now().isoformat()
             }
+    
+    def _get_available_slots_for_date_with_appointments(self, target_date: datetime, booked_appointments: List[Dict[str, Any]]) -> List[str]:
+        """
+        Get available appointment slots for a specific date using pre-fetched appointments
+        This optimized version avoids making additional API calls
+        """
+        try:
+            day_name = self._get_day_name(target_date)
+            
+            # Check if clinic is open on this day
+            day_schedule = self.schedule.get(day_name, {})
+            if day_schedule.get("status") == "Closed":
+                return []
+            
+            open_time = day_schedule.get("open")
+            close_time = day_schedule.get("close")
+            duration = day_schedule.get("default_slot_duration", 30)
+            lunch_break = day_schedule.get("lunch_break")
+            
+            if not open_time or not close_time:
+                return []
+            
+            # Generate all possible slots for the day
+            all_slots = self._generate_time_slots(open_time, close_time, duration, lunch_break)
+            
+            # Extract booked time slots from pre-fetched appointments
+            available_slots = []
+            
+            for slot_time_str in all_slots:
+                slot_start = self._parse_time(slot_time_str)
+                slot_start = target_date.replace(hour=slot_start.hour, minute=slot_start.minute, second=0, microsecond=0)
+                slot_end = slot_start + timedelta(minutes=duration)
+                  # Check if this slot conflicts with any booked appointment
+                is_available = True
+                for appointment in booked_appointments:
+                    if appointment.get("cancelled") or appointment.get("broken"):
+                        continue
+                        
+                    apt_start = self._parse_appointment_time(appointment, "wall_start_time")
+                    apt_end = self._parse_appointment_time(appointment, "wall_end_time")
+                    
+                    if not apt_start:
+                        continue
+                    
+                    # If no end time, try to calculate from duration or use default
+                    if not apt_end:
+                        apt_duration = appointment.get("duration_minutes", duration)
+                        apt_end = apt_start + timedelta(minutes=apt_duration)
+                    
+                    # Ensure we're checking appointments on the same date
+                    if apt_start.date() != target_date.date():
+                        continue
+                    
+                    # Check for overlap with slot
+                    if not (slot_end <= apt_start or slot_start >= apt_end):
+                        is_available = False
+                        break
+                
+                if is_available:
+                    available_slots.append(slot_time_str)
+            
+            return available_slots
+            
+        except Exception as e:
+            logger.error(f"Error getting available slots for {target_date}: {e}")
+            return []

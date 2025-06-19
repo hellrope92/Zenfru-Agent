@@ -419,3 +419,11 @@ class AvailabilityService:
             "total_available_slots": total_slots,
             "average_slots_per_day": total_slots / total_days if total_days > 0 else 0
         }
+
+class SimpleAvailabilityService:
+    def __init__(self):
+        pass
+
+    def check_availability(self):
+        # Placeholder method
+        return True
