@@ -68,19 +68,43 @@ def convert_time_to_datetime(date_str: str, time_str: str) -> datetime:
         return datetime.now()
 
 def get_kolla_contact_id(contact_info: dict) -> Optional[str]:
-    """Check if contact exists in Kolla, return contact_id if found, else None."""
+    """Check if contact exists in Kolla by phone number, return contact_id if found, else None."""
     url = f"{KOLLA_BASE_URL}/contacts"
     response = requests.get(url, headers=KOLLA_HEADERS)
     if response.status_code == 200:
         contacts = response.json().get('contacts', [])
-        # Try to match by phone or email
-        for c in contacts:
-            for phone in c.get('phone_numbers', []):
-                if phone.get('number') and contact_info.get('number') and phone['number'] == contact_info['number']:
-                    return c.get('name')
-            for email in c.get('email_addresses', []):
-                if email.get('address') and contact_info.get('email') and email['address'] == contact_info['email']:
-                    return c.get('name')
+        
+        # Extract phone number from contact_info
+        phone_to_search = None
+        if contact_info.get('number'):
+            phone_to_search = contact_info['number']
+        elif contact_info.get('phone_numbers') and len(contact_info['phone_numbers']) > 0:
+            phone_to_search = contact_info['phone_numbers'][0].get('number')
+        
+        if not phone_to_search:
+            return None
+        
+        # Normalize the search phone number
+        normalized_search_phone = phone_to_search.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        
+        # Search through all contacts for matching phone number
+        for contact in contacts:
+            if contact.get("type") == "PATIENT":
+                # Check all phone numbers for this contact
+                phone_numbers = contact.get("phone_numbers", [])
+                primary_phone = contact.get("primary_phone_number", "")
+                
+                # Normalize contact phone numbers for comparison
+                contact_phones = [phone.get("number", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "") 
+                                for phone in phone_numbers]
+                normalized_primary = primary_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                
+                # Check if any phone number matches
+                if normalized_search_phone in contact_phones or normalized_search_phone == normalized_primary:
+                    print(f"Found existing contact: {contact.get('name')} for phone: {phone_to_search}")
+                    return contact.get('name')  # Return the contact name (like "contacts/13")
+        
+        print(f"No existing contact found for phone: {phone_to_search}")
     return None
 
 def create_kolla_contact(contact_info: dict) -> Optional[str]:
