@@ -8,10 +8,25 @@ from pydantic import BaseModel
 class ContactInfo(BaseModel):
     number: Optional[str] = None
     email: Optional[str] = None
+    given_name: Optional[str] = None
+    family_name: Optional[str] = None
+    preferred_name: Optional[str] = None
+    gender: Optional[str] = None  # e.g., 'GENDER_MALE', 'GENDER_FEMALE', 'GENDER_OTHER'
+    birth_date: Optional[str] = None  # YYYY-MM-DD
+    notes: Optional[str] = None
+    addresses: Optional[List[Dict[str, Any]]] = None  # List of address dicts
+    phone_numbers: Optional[List[Dict[str, Any]]] = None  # List of phone dicts
+    email_addresses: Optional[List[Dict[str, Any]]] = None  # List of email dicts
+    state: Optional[str] = None  # e.g., 'ACTIVE', 'ARCHIVED'
+    opt_ins: Optional[Dict[str, Optional[bool]]] = None  # e.g., {'sms': True, 'email': False}
+    preferred_provider: Optional[Dict[str, Any]] = None
+    first_visit: Optional[str] = None  # YYYY-MM-DD
+    guarantor: Optional[str] = None
+    additional_data: Optional[Dict[str, Any]] = None
 
 class BookAppointmentRequest(BaseModel):
     name: str
-    contact: Union[str, Dict[str, Any]]  # Accept both string and dict
+    contact: Union[str, Dict[str, Any], ContactInfo]  # Accept string, dict, or ContactInfo
     day: str
     date: str  # Added date field
     dob: Optional[str] = None  # Added patient date of birth
@@ -20,6 +35,8 @@ class BookAppointmentRequest(BaseModel):
     service_booked: str
     doctor_for_appointment: str
     patient_details: Optional[Union[str, Dict[str, Any]]] = None  # Accept both string and dict
+    # Optionally allow direct passing of expanded contact info
+    contact_info: Optional[ContactInfo] = None
 
 class CheckSlotsRequest(BaseModel):
     day: str
