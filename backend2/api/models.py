@@ -84,8 +84,10 @@ class GetAppointmentRequest(BaseModel):
     phone: str
 
 class GetContactRequest(BaseModel):
-    name: str
-    dob: Optional[str] = None  # DOB is optional since not always available for patient lookup
+    phone: str  # Changed from name to phone for consistent patient identification
+    # Legacy support
+    name: Optional[str] = None  
+    dob: Optional[str] = None
 
 class AvailabilityRequest(BaseModel):
     date: str  # YYYY-MM-DD format

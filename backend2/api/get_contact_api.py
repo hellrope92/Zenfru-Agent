@@ -32,37 +32,42 @@ cache_service = LocalCacheService()
 async def get_contact(request: GetContactRequest):
     """
     Retrieves existing patient contact information
-    Parameters: name, dob
+    Parameters: phone (required), name, dob (optional for legacy support)
     Used for booking appointments with existing patients
     """
     try:        
-        # Print DOB if provided (as requested)
-        if request.dob:
-            print(f"Fetching contact for patient DOB: {request.dob}")
-            
-        # First check local cache (handle case where dob might be None)
-        cached_contact = cache_service.get_contact_by_patient(request.name, request.dob or "")
+        # Print phone number as requested
+        print(f"Fetching contact for patient phone: {request.phone}")
+        
+        # Normalize phone number
+        normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        
+        # First check local cache (using phone number for matching)
+        cached_contact = cache_service.get_contact_by_phone(normalized_phone)
         
         if cached_contact:
             return {
                 "success": True,
+                "patient_phone": request.phone,
                 "patient_name": request.name,
                 "patient_dob": request.dob,
                 "contact_info": cached_contact,
                 "source": "cache"
             }
-          # If not in cache or cache is stale, fetch from Kolla API
-        contact_info = await fetch_contact_from_kolla(request.name, request.dob or "")
+          
+        # If not in cache or cache is stale, fetch from Kolla API
+        contact_info = await fetch_contact_from_kolla_by_phone(normalized_phone)
         
         if contact_info:
             # Store in cache
-            contact_id = contact_info.get("id", f"contact_{request.name}_{request.dob or 'unknown'}_{datetime.now().timestamp()}")
-            cache_service.store_contact(contact_id, request.name, request.dob or "", contact_info)
+            contact_id = contact_info.get("name", f"contact_{normalized_phone}_{datetime.now().timestamp()}")
+            cache_service.store_contact(contact_id, contact_info.get("given_name", ""), contact_info.get("birth_date", ""), contact_info)
             
             return {
                 "success": True,
-                "patient_name": request.name,
-                "patient_dob": request.dob,
+                "patient_phone": request.phone,
+                "patient_name": f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip(),
+                "patient_dob": contact_info.get("birth_date"),
                 "contact_info": contact_info,
                 "source": "api"
             }
@@ -70,6 +75,7 @@ async def get_contact(request: GetContactRequest):
             return {
                 "success": False,
                 "message": "No contact information found for the specified patient",
+                "patient_phone": request.phone,
                 "patient_name": request.name,
                 "patient_dob": request.dob,
                 "contact_info": None
@@ -77,6 +83,43 @@ async def get_contact(request: GetContactRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving contact information: {str(e)}")
+
+async def fetch_contact_from_kolla_by_phone(patient_phone: str) -> Optional[Dict[str, Any]]:
+    """Fetch contact information from Kolla API using phone number"""
+    try:
+        # Step 1: Search for contacts by phone number
+        contacts_url = f"{KOLLA_BASE_URL}/contacts"
+        contacts_response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
+        
+        if contacts_response.status_code != 200:
+            print(f"Error searching for contacts: {contacts_response.status_code}")
+            return None
+            
+        contacts_data = contacts_response.json()
+        
+        # Step 2: Find contact with matching phone number
+        for contact in contacts_data.get("contacts", []):
+            if contact.get("type") == "PATIENT":
+                # Check all phone numbers for this contact
+                phone_numbers = contact.get("phone_numbers", [])
+                primary_phone = contact.get("primary_phone_number", "")
+                
+                # Normalize contact phone numbers for comparison
+                contact_phones = [phone.get("number", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "") 
+                                for phone in phone_numbers]
+                normalized_primary = primary_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+                
+                # Check if any phone number matches
+                if patient_phone in contact_phones or patient_phone == normalized_primary:
+                    print(f"Found matching contact: {contact.get('name')} for phone: {patient_phone}")
+                    return contact  # Return the full contact info
+        
+        print(f"No contact found for phone: {patient_phone}")
+        return None
+        
+    except Exception as e:
+        print(f"Error fetching contact from Kolla by phone: {e}")
+        return None
 
 async def fetch_contact_from_kolla(patient_name: str, patient_dob: str) -> Optional[Dict[str, Any]]:
     """Fetch contact information from Kolla API for a specific patient"""
