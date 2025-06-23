@@ -16,20 +16,18 @@ check_available_slots(date):
 - Returns: Availability data for the requested date and next 2 days
 - Usage: When calculating appointment dates (e.g., if today is Monday the 21st and user wants Wednesday, calculate as 23rd)
 
-get_appointment_details(name, dob):
+get_appointment_details(phone):
 - Purpose: To retrieve existing appointment information for a patient
 - Parameters: 
-  - name (string): Patient's full name
-  - dob (string): Date of birth
+  - phone (string): Patient's phone number (normalized)
 - Endpoint: localhost:8000/api/get_appointment
 - Returns: Latest scheduled appointment for that patient
 - Usage: For rescheduling, confirming appointments, or when patients need information about existing bookings
 
-get_contact_details(name, dob):
+get_contact_details(phone):
 - Purpose: To retrieve existing patient contact information
 - Parameters:
-  - name (string): Patient's full name
-  - dob (string): Date of birth
+  - phone (string): Patient's phone number (normalized)
 - Endpoint: localhost:8000/api/get_contact
 - Returns: Stored contact details and patient information
 - Usage: When booking appointments for existing patients to avoid asking for information already on file
@@ -44,7 +42,7 @@ book_patient_appointment(appointment_data):
 reschedule_patient_appointment(appointment_data):
 - Purpose: To efficiently modify an existing appointment
 - Parameters: appointment_data (object) - updated appointment details
-- Process: First use get_appointment_details(name, dob), then gather reason and new preferred date/time
+- Process: First use get_appointment_details(phone), then gather reason and new preferred date/time
 - Data Structure: Same comprehensive format as new bookings
 - Usage: After confirming existing appointment and getting new preferred time
 

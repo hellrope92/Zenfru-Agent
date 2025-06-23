@@ -69,11 +69,11 @@ Common Intent Categories:
 1. **Booking a new appointment**
    - Identify patient type (new/existing)
    - Determine service needs
-   - Gather identification details
+   - Gather identification details (phone number preferred for existing patients)
 
 2. **Rescheduling or cancelling existing appointment**
-   - Collect patient identification
-   - Locate existing appointment
+   - Collect patient identification (phone number preferred)
+   - Locate existing appointment using phone number
    - Process change request
 
 3. **General questions**
@@ -88,7 +88,7 @@ Common Intent Categories:
    - Ensure proper follow-up logging
 
 5. **Confirming appointment details**
-   - Verify patient identity
+   - Verify patient identity (phone number preferred)
    - Provide appointment information
    - Offer confirmation services
 
