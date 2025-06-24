@@ -1,0 +1,13 @@
+{
+  "Sunday": { "open": "9:00 AM", "close": "4:00 PM", "doctor": "Dr. Yuzvyak" },
+  "Monday": { "open": "9:00 AM", "close": "6:00 PM", "doctor": "Dr. Hanna" },
+  "Tuesday": { "status": "Closed" },
+  "Wednesday": {
+    "open": "9:00 AM",
+    "close": "5:00 PM",
+    "doctor": "Dr. Parmar"
+  },
+  "Thursday": { "open": "9:00 AM", "close": "6:00 PM", "doctor": "Dr. Hanna" },
+  "Friday": { "status": "Closed" },
+  "Saturday": { "open": "9:00 AM", "close": "4:00 PM", "doctor": "Dr. Lee" }
+}

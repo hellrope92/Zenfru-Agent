@@ -186,8 +186,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "message": "No operatory resource found in Kolla.",
                 "status": "error",
                 "error": "operatory_not_found"
-            }
-        # Prepare providers list
+            }        # Prepare providers list
         providers = []
         if provider_resource:
             providers.append({
@@ -195,11 +194,14 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "remote_id": provider_resource.get("remote_id", ""),
                 "type": "PROVIDER"
             })
+        
         appointment_data = {
             "contact_id": contact_id,
             "contact": {
                 "name": contact_id,
-                "remote_id": contact_info.get("remote_id", "")
+                "remote_id": contact_info.get("remote_id", ""),
+                "given_name": contact_info.get("given_name", ""),
+                "family_name": contact_info.get("family_name", "")
             },
             "wall_start_time": start_datetime.strftime("%Y-%m-%d %H:%M:%S"),
             "wall_end_time": end_datetime.strftime("%Y-%m-%d %H:%M:%S"),
@@ -210,6 +212,17 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             "notes": contact_info.get("notes", ""),
             "additional_data": contact_info.get("additional_data", {})
         }
+        
+        # Set contact name as combination of given_name and family_name
+        given_name = contact_info.get("given_name", "").strip()
+        family_name = contact_info.get("family_name", "").strip()
+        if given_name and family_name:
+            appointment_data["contact"]["name"] = f"{given_name} {family_name}"
+        elif given_name:
+            appointment_data["contact"]["name"] = given_name
+        elif family_name:
+            appointment_data["contact"]["name"] = family_name
+        # If no given/family name, keep contact_id as name
         # 4. Book appointment in Kolla
         url = f"{KOLLA_BASE_URL}/appointments"
         response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(appointment_data))
@@ -249,22 +262,70 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         }
 
 async def reschedule_patient_appointment(request: RescheduleRequest):
-    """Reschedule an existing patient appointment (print only)"""
+    """Reschedule an existing patient appointment using Kolla API"""
     
     print(f"🔄 RESCHEDULE_PATIENT_APPOINTMENT:")
-    print(f"   Name: {request.name}")
-    print(f"   DOB: {request.dob}")
-    print(f"   Reason: {request.reason}")
-    print(f"   New Slot: {request.new_slot}")
-    print(f"   ✅ [SIMULATION] Appointment would be rescheduled!")
+    print(f"   Appointment ID: {request.appointment_id}")
+    print(f"   New Start Time: {request.start_time}")
+    print(f"   New End Time: {request.end_time}")
+    print(f"   Notes: {request.notes}")
     
-    return {
-        "success": True,
-        "message": f"[SIMULATION] Appointment would be rescheduled for {request.name}",
-        "new_appointment_details": {
-            "name": request.name,
-            "new_slot": request.new_slot,
-            "reason": request.reason,
-            "timestamp": datetime.now().isoformat()
+    try:
+        # Convert ISO datetime strings to the format Kolla expects
+        start_dt = datetime.fromisoformat(request.start_time.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(request.end_time.replace('Z', '+00:00'))
+        
+        # Format for Kolla API (assuming it expects local time format)
+        wall_start_time = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+        wall_end_time = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Prepare update data for Kolla
+        update_data = {
+            "wall_start_time": wall_start_time,
+            "wall_end_time": wall_end_time
         }
-    }
+        
+        # Add notes if provided
+        if request.notes:
+            update_data["notes"] = request.notes
+        
+        # Make API call to update the appointment in Kolla
+        url = f"{KOLLA_BASE_URL}/appointments/{request.appointment_id}"
+        response = requests.patch(url, headers=KOLLA_HEADERS, data=json.dumps(update_data))
+        
+        if response.status_code in (200, 204):
+            print(f"   ✅ Appointment successfully rescheduled through Kolla API!")
+            print(f"   📋 Updated Appointment ID: {request.appointment_id}")
+            
+            return {
+                "success": True,
+                "message": f"Appointment {request.appointment_id} successfully rescheduled",
+                "status": "confirmed",
+                "appointment_details": {
+                    "appointment_id": request.appointment_id,
+                    "start_time": request.start_time,
+                    "end_time": request.end_time,
+                    "notes": request.notes,
+                    "wall_start_time": wall_start_time,
+                    "wall_end_time": wall_end_time,
+                    "timestamp": datetime.now().isoformat()
+                }
+            }
+        else:
+            print(f"   ❌ Failed to reschedule appointment through Kolla API")
+            print(f"   Error response: {response.text}")
+            return {
+                "success": False,
+                "message": f"Failed to reschedule appointment {request.appointment_id}. Please try again or contact the clinic directly.",
+                "status": "failed",
+                "error": response.text
+            }
+            
+    except Exception as e:
+        print(f"   ❌ Error rescheduling appointment: {e}")
+        return {
+            "success": False,
+            "message": f"An error occurred while rescheduling the appointment. Please contact the clinic directly.",
+            "status": "error",
+            "error": str(e)
+        }

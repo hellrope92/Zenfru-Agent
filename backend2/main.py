@@ -19,7 +19,21 @@ from services.getkolla_service import GetKollaService
 from services.availability_service import AvailabilityService
 
 # Import API routers
-from api import schedule_api, booking_api, patient_services_api, debug_api
+from api import (
+    schedule_api, 
+    booking_api, 
+    patient_services_api, 
+    debug_api,
+    appointment_details_api,
+    availability_api,
+    get_appointment_api,
+    get_contact_api,
+    new_patient_form_api,
+    callback_api,
+    conversation_log_api,
+    reschedule_api,
+    confirm_api
+)
 
 # ========== DATA LOADING ==========
 
@@ -103,35 +117,6 @@ except ImportError:
 # Create wrapper functions for dependency injection
 def create_schedule_endpoints():
     """Create schedule endpoints with proper dependency injection"""
-    
-    @app.get("/api/get_current_day", tags=["schedule"])
-    async def get_current_day():
-        """Get the current day of the week"""
-        current_day = datetime.now().strftime("%A")
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        print(f"🗓️ GET_CURRENT_DAY: {current_day}")
-        
-        return {
-            "day": current_day,
-            "date": current_date,
-        }
-    
-    @app.post("/api/check_available_slots", tags=["schedule"])
-    async def check_available_slots(
-        request: schedule_api.CheckSlotsRequest,
-        getkolla_service: GetKollaService = Depends(get_getkolla_service),
-        schedule: Dict = Depends(get_schedule),
-        bookings: List = Depends(get_bookings)    ):
-        """Check available appointment slots for next 7 days using GetKolla API"""
-        return await schedule_api.check_available_slots(request, getkolla_service, schedule, bookings)
-    
-    @app.get("/api/get_schedule", tags=["schedule"])
-    async def get_schedule_endpoint(
-        days: int = 7,
-        getkolla_service: GetKollaService = Depends(get_getkolla_service)
-    ):
-        """Get available appointment schedule for the next N days using GetKolla API"""
-        return await schedule_api.get_schedule(getkolla_service, days)
     
     @app.get("/api/availability", tags=["schedule"])
     async def get_availability(
@@ -239,27 +224,46 @@ create_booking_endpoints()
 create_patient_services_endpoints()
 create_debug_endpoints()
 
+# Include all new router-based APIs
+app.include_router(appointment_details_api.router)
+app.include_router(availability_api.router)
+app.include_router(get_appointment_api.router)
+app.include_router(get_contact_api.router)
+app.include_router(new_patient_form_api.router)
+app.include_router(callback_api.router)
+app.include_router(conversation_log_api.router)
+app.include_router(reschedule_api.router)
+app.include_router(confirm_api.router)
+
 # ========== MAIN ==========
 
 if __name__ == "__main__":    
     print("🦷 Starting BrightSmile Dental AI Assistant - Modular Backend")
     print("📋 Available endpoints organized by modules:")
     print()
-    print("📅 Schedule Module:")
-    print("   - GET  /api/get_current_day")
-    print("   - POST /api/check_available_slots (shows next 5 days)")
-    print("   - GET  /api/get_schedule")
+    print("📅 Schedule & Availability Module:")
     print("   - GET  /api/availability?date=YYYY-MM-DD (returns 3 days)")
+    print("   - GET  /api/availability/refresh")
     print()
-    print("📝 Booking Module:")
+    print("📝 Booking & Reschedule Module:")
     print("   - POST /api/book_patient_appointment")
-    print("   - POST /api/reschedule_patient_appointment")
+    print("   - POST /api/reschedule_patient_appointment (flexible agent format)")
+    print("   - POST /api/reschedule_appointment (legacy)")
+    print()
+    print("📋 Core Patient APIs (with local caching):")
+    print("   - POST /api/get_appointment (name, dob) - 24hr cache")
+    print("   - GET  /api/get_appointment/{name}/{dob}")
+    print("   - POST /api/get_contact (name, dob) - 24hr cache")
+    print("   - GET  /api/get_contact/{name}/{dob}")
     print()
     print("👥 Patient Services Module:")
     print("   - POST /api/send_new_patient_form")
     print("   - POST /api/log_callback_request")
-    print("   - POST /api/answer_faq_query (uses knowledge_base.json)")
+    print("   - GET  /api/callback_requests")
+    print("   - PUT  /api/callback_requests/{id}/status")
     print("   - POST /api/log_conversation_summary")
+    print("   - GET  /api/conversation_logs")
+    print("   - GET  /api/conversation_logs/analytics")
     print()
     print("🔧 Debug Module:")
     print("   - GET  /api/health")

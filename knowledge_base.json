@@ -1,0 +1,103 @@
+{
+  "clinic_info": {
+    "name": "BrightSmile Dental Clinic",
+    "address": "123 Main Street, Springfield",
+    "parking_info": "Free parking is available directly in front of the clinic.",
+    "office_hours_detailed": {
+      "Monday": "9:00 AM - 6:00 PM (Dr. Hanna)",
+      "Tuesday": "Closed",
+      "Wednesday": "9:00 AM - 5:00 PM (Dr. Parmar)",
+      "Thursday": "9:00 AM - 6:00 PM (Dr. Hanna)",
+      "Friday": "Closed",
+      "Saturday": "9:00 AM - 4:00 PM (Dr. Lee)",
+      "Sunday": "9:00 AM - 4:00 PM (Dr. Yuzvyak)"
+    },
+    "services_offered_summary": [
+      "Routine check-ups",
+      "Fillings/bonding",
+      "Root Canal Treatments",
+      "Extractions (including some wisdom teeth)",
+      "Crowns/Veneers",
+      "Bridges",
+      "Dentures/Partials",
+      "Nightguards",
+      "Implants",
+      "Bone Grafting",
+      "Sinus Lifts",
+      "Biopsies"
+    ],
+    "service_pricing": {
+      "X-ray (one side)": "$50",
+      "Regular Cleaning": "$100",
+      "Dental Cleaning": "$80",
+      "Teeth Whitening": "$150",
+      "Root Canal Therapy (Simple Anterior/Bicuspid)": "Starting from $400",
+      "Dental Implants": "Starting from $1000",
+      "Braces and Orthodontics": "Consultation required, starting from $2000"
+    },
+    "dentist_team": [
+      {
+        "name": "Dr. Hanna",
+        "working_days_hours": "Mondays 9AM - 6PM, Thursdays 9AM - 6PM",
+        "services": [
+          "Routine check-ups",
+          "Fillings/bonding",
+          "Simple RCT on anterior and bicuspid teeth",
+          "Simple extractions on all teeth except for wisdom teeth",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Nightguards"
+        ]
+      },
+      {
+        "name": "Dr. Lee",
+        "working_days_hours": "Saturdays 9AM - 4PM",
+        "services": [
+          "Routine check-ups",
+          "Fillings/bonding",
+          "Simple RCT on anterior and bicuspid teeth",
+          "Simple extractions on all teeth except for wisdom teeth",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Nightguards"
+        ]
+      },
+      {
+        "name": "Dr. Yuzvyak",
+        "working_days_hours": "Sundays 9AM - 4PM",
+        "services": [
+          "Extractions (including complex/wisdom teeth)",
+          "Implants",
+          "Bone Grafting",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Sinus Lift",
+          "Biopsy"
+        ]
+      },
+      {
+        "name": "Dr. Parmar",
+        "working_days_hours": "Wednesdays 9AM - 5PM",
+        "services": [
+          "Extractions (including complex/wisdom teeth)",
+          "Implants",
+          "Bone Grafting",
+          "Crowns/Veneers",
+          "Bridges",
+          "Dentures/Partials",
+          "Sinus Lift",
+          "Biopsy"
+        ]
+      }
+    ],
+    "holiday_closures": {
+      "Christmas": "Closed from December 24th to 26th",
+      "New Year's Day": "Closed on January 1st"
+    }
+  },
+  "intake_form_url": "https://clinicdemo.com/intake-form",
+  "callback_policy": "Collect the caller’s name, phone number, and the reason for their call. Let them know the clinic team will return their call on the next business day if calling after hours or if a specialist needs to be consulted."
+}

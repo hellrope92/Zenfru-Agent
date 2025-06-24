@@ -1,6 +1,7 @@
 import requests
 from fastapi import APIRouter, HTTPException
-from .models import RescheduleRequest  # or define a ConfirmRequest if needed
+from pydantic import BaseModel
+from typing import Optional
 
 KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
 KOLLA_HEADERS = {
@@ -13,28 +14,54 @@ KOLLA_HEADERS = {
 
 router = APIRouter(prefix="/api", tags=["confirm"])
 
-# Endpoint for confirming an appointment
-# To be implemented: logic for confirming
+class ConfirmRequest(BaseModel):
+    appointment_id: str
+    name: Optional[str] = None
+    confirmed: bool = True
+    confirmation_type: Optional[str] = "confirmationTypes/0"  # Fixed: valid confirmation type
+    notes: Optional[str] = None
 
-def confirm_appointment(appointment_id: str):
-    """Confirm an appointment using Kolla API."""
+@router.post("/confirm_appointment")
+async def confirm_appointment_endpoint(request: ConfirmRequest):
+    """Confirm an appointment using Kolla API with proper format."""
     try:
-        url = f"{KOLLA_BASE_URL}/appointments/{appointment_id}:confirm"
-        response = requests.post(url, headers=KOLLA_HEADERS)
+        url = f"{KOLLA_BASE_URL}/appointments/{request.appointment_id}:confirm"
+        
+        # Prepare the payload in the format expected by Kolla API
+        payload = {
+            "confirmed": request.confirmed,
+            "additional_data": {
+                "confirmation_type": request.confirmation_type
+            }
+        }
+        
+        # Add notes if provided
+        if request.notes:
+            payload["notes"] = request.notes
+            
+        # Add name if provided
+        if request.name:
+            payload["name"] = request.name
+            
+        response = requests.post(url, headers=KOLLA_HEADERS, json=payload)
+        
         if response.status_code in (200, 204):
             return {
                 "success": True,
-                "message": f"Appointment {appointment_id} confirmed successfully."
+                "message": f"Appointment {request.appointment_id} confirmed successfully.",
+                "appointment_id": request.appointment_id,
+                "confirmed": request.confirmed,
+                "confirmation_type": request.confirmation_type,
+                "notes": request.notes,
+                "status": "confirmed"
             }
         else:
             return {
                 "success": False,
                 "message": f"Failed to confirm appointment: {response.text}",
+                "status_code": response.status_code,
+                "appointment_id": request.appointment_id,
                 "status": "failed"
             }
     except Exception as e:
-        return {
-            "success": False,
-            "message": f"Error: {str(e)}",
-            "status": "error"
-        }
+        raise HTTPException(status_code=500, detail=f"Error confirming appointment: {str(e)}")

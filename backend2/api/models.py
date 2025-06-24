@@ -46,10 +46,15 @@ class CheckServiceSlotsRequest(BaseModel):
     date: Optional[str] = None  # Specific date (YYYY-MM-DD), if not provided will check next 7 days
 
 class RescheduleRequest(BaseModel):
-    name: str
-    dob: str
-    reason: str
-    new_slot: str
+    appointment_id: str
+    start_time: str  # ISO format datetime string
+    end_time: str    # ISO format datetime string
+    notes: Optional[str] = None
+    # Optional legacy fields for backward compatibility
+    name: Optional[str] = None
+    dob: Optional[str] = None
+    reason: Optional[str] = None
+    new_slot: Optional[str] = None
 
 class CallbackRequest(BaseModel):
     name: str
@@ -70,3 +75,33 @@ class ConversationSummaryRequest(BaseModel):
     outcome: Optional[str] = None
     call_duration: Optional[int] = None
     additional_notes: Optional[str] = None
+
+# New models for the core APIs
+class GetAppointmentRequest(BaseModel):
+    name: str
+    dob: Optional[str] = None  # DOB is optional since the API doesn't provide it for matching
+
+class GetContactRequest(BaseModel):
+    name: str
+    dob: Optional[str] = None  # DOB is optional since not always available for patient lookup
+
+class AvailabilityRequest(BaseModel):
+    date: str  # YYYY-MM-DD format
+
+class LogCallbackRequest(BaseModel):
+    name: str
+    contact: str
+    reason: str
+    preferred_callback_time: Optional[str] = None
+
+class SendNewPatientFormRequest(BaseModel):
+    phone_number: str
+
+class AnswerFAQRequest(BaseModel):
+    query: str
+
+class LogConversationRequest(BaseModel):
+    patient_name: Optional[str] = None
+    conversation_summary: str
+    call_outcome: str
+    timestamp: Optional[str] = None

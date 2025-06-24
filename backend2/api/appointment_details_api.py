@@ -1,5 +1,8 @@
 import requests
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from services.local_cache_service import LocalCacheService
 
 KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
 KOLLA_HEADERS = {
@@ -11,29 +14,10 @@ KOLLA_HEADERS = {
 }
 
 router = APIRouter(prefix="/api", tags=["appointment-details"])
+cache_service = LocalCacheService()
 
-# Endpoint for fetching appointment details
-# To be implemented: logic for fetching appointment details
+class AppointmentDetailsRequest(BaseModel):
+    name: str
+    dob: str
 
-def get_appointment_details(appointment_id: str):
-    """Fetch appointment details from Kolla API."""
-    try:
-        url = f"{KOLLA_BASE_URL}/appointments/{appointment_id}"
-        response = requests.get(url, headers=KOLLA_HEADERS)
-        if response.status_code == 200:
-            return {
-                "success": True,
-                "appointment": response.json()
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"Failed to fetch appointment details: {response.text}",
-                "status": "failed"
-            }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Error: {str(e)}",
-            "status": "error"
-        }
+# Endpoints removed as requested
