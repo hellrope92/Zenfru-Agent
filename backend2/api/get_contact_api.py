@@ -42,15 +42,19 @@ async def get_contact(request: GetContactRequest):
         # Normalize phone number
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         
-        # First check local cache (using phone number for matching)
-        cached_contact = cache_service.get_contact_by_phone(normalized_phone)
+        # First check local cache (using phone number for matching primary_phone_number in appointments)
+        appointments = cache_service.get_appointments_by_phone(normalized_phone)
+        cached_contact = None
+        if appointments:
+            # Extract contact info from the most recent appointment
+            cached_contact = appointments[0].get("contact", {})
         
         if cached_contact:
             return {
                 "success": True,
                 "patient_phone": request.phone,
-                "patient_name": request.name,
-                "patient_dob": request.dob,
+                "patient_name": f"{cached_contact.get('given_name', '')} {cached_contact.get('family_name', '')}".strip(),
+                "patient_dob": cached_contact.get("birth_date"),
                 "contact_info": cached_contact,
                 "source": "cache"
             }

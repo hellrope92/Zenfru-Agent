@@ -177,3 +177,8 @@ Quality Assurance:
 - Include comprehensive details of interaction
 - Document final outcome clearly
 - Ensure patient knows next steps
+
+=== EMAIL ADDRESS HANDLING ===
+
+Clarification and Conversion:
+When collecting or confirming email addresses, always clarify the format with the user. If the user provides an email like "jake at gmail dot com" or "jakeattherategmail.com", confirm and convert it to the standard format (e.g., jake@gmail.com) before using or storing it.

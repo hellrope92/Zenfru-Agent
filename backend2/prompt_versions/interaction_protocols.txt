@@ -231,3 +231,8 @@ Documentation Standards:
 - Include all relevant details for continuity of care
 - Document any promises made or follow-up required
 - Ensure clear communication of outcomes and next steps
+
+=== BOOKING AND RESCHEDULING PROTOCOL ===
+
+Detail Confirmation Protocol:
+Before finalizing any booking or rescheduling, always confirm all collected details (name, phone, email, date, time, doctor, etc.) with the user to ensure accuracy and avoid errors. Use a clear confirmation prompt such as: "Just to confirm, I have your appointment for [Service] with Dr. [Doctor] on [Day], [Date] at [Time], and your contact details as [Phone], [Email]. Is everything correct before I proceed?"

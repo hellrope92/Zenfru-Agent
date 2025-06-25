@@ -167,6 +167,9 @@ Booking Execution:
 1. Call book_patient_appointment(appointment_data) with compiled data structure
 2. System automatically handles appointment duration and scheduling based on slots_needed and doctor availability
 
+Step 5.1: Confirm All Details Before Finalizing
+Before calling book_patient_appointment or reschedule_patient_appointment, always review all collected details (name, phone, email, date, time, doctor, etc.) with the patient. Use a confirmation prompt such as: "Just to confirm, I have your appointment for [Service] with Dr. [Doctor] on [Day], [Date] at [Time], and your contact details as [Phone], [Email]. Is everything correct before I proceed?"
+
 Step 6: Confirm Appointment
 
 Confirmation Message:
@@ -247,3 +250,5 @@ Quality Assurance:
 - Double-check all collected information before finalizing booking
 - Ensure appointment details are clearly communicated
 - Confirm patient understands next steps and what to expect
+
+When collecting email addresses, always clarify and confirm the format with the user. If the user says something like "jake at gmail dot com" or "jakeattherategmail.com", confirm and convert it to the standard format (e.g., jake@gmail.com) before saving or sending to any API.
