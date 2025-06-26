@@ -57,6 +57,10 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         if not request.appointment_id:
             raise HTTPException(status_code=400, detail="appointment_id is required")
         
+        # Print DOB if provided (as requested)
+        if request.dob:
+            print(f"Rescheduling appointment for patient DOB: {request.dob}")
+        
         # Build the patch data from agent input
         patch_data = build_patch_data(request)
         
@@ -72,6 +76,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "success": True,
                 "message": f"Appointment {request.appointment_id} rescheduled successfully",
                 "appointment_id": request.appointment_id,
+                "patient_name": request.name,
+                "patient_dob": request.dob,
                 "updated_fields": patch_data,
                 "status": "rescheduled"
             }

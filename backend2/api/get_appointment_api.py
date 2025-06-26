@@ -40,6 +40,10 @@ async def get_appointment(request: GetAppointmentRequest):
       Note: Matching is performed by name only since DOB is not available in the API response.
     """
     try:
+        # Print DOB if provided (as requested)
+        if request.dob:
+            print(f"Fetching appointments for patient DOB: {request.dob}")
+            
         # First check local cache (using name only for matching)
         cached_appointments = cache_service.get_appointments_by_patient(request.name, request.dob or "")
         

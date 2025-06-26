@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api", tags=["confirm"])
 class ConfirmRequest(BaseModel):
     appointment_id: str
     name: Optional[str] = None
+    dob: Optional[str] = None  # Date of birth
     confirmed: bool = True
     confirmation_type: Optional[str] = "confirmationTypes/0"  # Fixed: valid confirmation type
     notes: Optional[str] = None
@@ -43,6 +44,10 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
         if request.name:
             payload["name"] = request.name
             
+        # Print DOB if provided (as requested)
+        if request.dob:
+            print(f"Confirming appointment for patient DOB: {request.dob}")
+            
         response = requests.post(url, headers=KOLLA_HEADERS, json=payload)
         
         if response.status_code in (200, 204):
@@ -50,6 +55,8 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 "success": True,
                 "message": f"Appointment {request.appointment_id} confirmed successfully.",
                 "appointment_id": request.appointment_id,
+                "patient_name": request.name,
+                "patient_dob": request.dob,
                 "confirmed": request.confirmed,
                 "confirmation_type": request.confirmation_type,
                 "notes": request.notes,

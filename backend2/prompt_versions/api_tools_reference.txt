@@ -1,0 +1,203 @@
+API Tools Reference
+Technical Documentation for BrightSmile Dental Clinic AI Assistant
+
+=== AVAILABLE TOOLS AND THEIR PARAMETERS ===
+
+get_current_day():
+- Purpose: To accurately determine the current day of the week and calculate dates
+- Parameters: None
+- Fallback: If this tool encounters an issue, assume the current day is Tuesday
+- Usage: For date calculations and appointment scheduling
+
+check_available_slots(date):
+- Purpose: To query for available appointment times using the API endpoint
+- Parameters: date (YYYY-MM-DD format)
+- Endpoint: {{BASE_URL}}/api/availability?date={{DATE}}
+- Returns: Availability data for the requested date and next 2 days
+- Usage: When calculating appointment dates (e.g., if today is Monday the 21st and user wants Wednesday, calculate as 23rd)
+
+get_appointment_details(name, dob):
+- Purpose: To retrieve existing appointment information for a patient
+- Parameters: 
+  - name (string): Patient's full name
+  - dob (string): Date of birth
+- Endpoint: localhost:8000/api/get_appointment
+- Returns: Latest scheduled appointment for that patient
+- Usage: For rescheduling, confirming appointments, or when patients need information about existing bookings
+
+get_contact_details(name, dob):
+- Purpose: To retrieve existing patient contact information
+- Parameters:
+  - name (string): Patient's full name
+  - dob (string): Date of birth
+- Endpoint: localhost:8000/api/get_contact
+- Returns: Stored contact details and patient information
+- Usage: When booking appointments for existing patients to avoid asking for information already on file
+
+book_patient_appointment(appointment_data):
+- Purpose: To secure a new appointment using the updated API structure
+- Parameters: appointment_data (object) - comprehensive patient information
+- Endpoint: {{BASE_URL}}/api/book_patient_appointment
+- Data Structure: See "APPOINTMENT DATA STRUCTURE" section below
+- Usage: Final step in booking process after gathering all patient information
+
+reschedule_patient_appointment(appointment_data):
+- Purpose: To efficiently modify an existing appointment
+- Parameters: appointment_data (object) - updated appointment details
+- Process: First use get_appointment_details(name, dob), then gather reason and new preferred date/time
+- Data Structure: Same comprehensive format as new bookings
+- Usage: After confirming existing appointment and getting new preferred time
+
+confirm_patient_appointment(confirmation_data):
+- Purpose: To confirm a patient's attendance for their scheduled appointment
+- Parameters: confirmation_data (object)
+- Data Structure:
+  {
+    "appointment_id": "[appointment_id from retrieved appointment details]",
+    "notes": "Patient confirmed attendance via phone call"
+  }
+- Usage: When a patient calls to confirm they will attend their appointment
+
+send_new_patient_form(contact_number):
+- Purpose: To send comprehensive package of new patient forms
+- Parameters: contact_number (string)
+- Forms Included: registration, medical history, financial policy, general consent, HIPAA acknowledgment, consent to receive text messages
+- Privacy Note: Do not repeat the phone number aloud for privacy
+
+log_callback_request(name, contact, reason, preferred_callback_time):
+- Purpose: To record a request for a callback
+- Parameters:
+  - name (string): Patient's name
+  - contact (string): Contact information
+  - reason (string): Reason for callback
+  - preferred_callback_time (string): When patient prefers to be called back
+- Usage: When clinic is closed or tools repeatedly fail (after 3 attempts)
+
+answer_faq_query(query):
+- Purpose: To provide answers from the knowledge base
+- Parameters: query (string): The question or topic
+- Source: Draws from {{knowledge_base}}
+- Limitations: Never offer medical advice, diagnose conditions, or speculate on clinical matters
+
+log_conversation_summary():
+- Purpose: To create a log at the conclusion of each conversation
+- Parameters: None (automatically captures conversation context)
+- Required Content: Patient name, primary intent, appointment details if applicable, final outcome
+- Usage: Must be called at the end of every conversation
+
+=== API ENDPOINTS AND DATA STRUCTURES ===
+
+Dynamic Schedule API Response:
+{{BASE_URL}}/api/availability?date={{DATE}}
+
+Response Format:
+{
+  "success": true/false,
+  "requested_date": "YYYY-MM-DD",
+  "availability": {
+    "YYYY-MM-DD": {
+      "date": "YYYY-MM-DD",
+      "day": "Wednesday",
+      "status": "Open" or "Closed",
+      "free_slots": number,
+      "booked_slots": number,
+      "total_slots": number,
+      "available_times": ["10:00 AM", "10:30 AM", "11:00 AM"]
+    }
+  }
+}
+
+Note: If status is "Closed", do not offer appointments for that day and inform caller that clinic is closed.
+
+=== APPOINTMENT DATA STRUCTURE ===
+
+Complete appointment data format for booking/rescheduling:
+
+{
+  "name": "[Full Name]",
+  "contact": "[Phone Number]",
+  "contact_info": {
+    "number": "[Phone Number]",
+    "email": "[Email Address]",
+    "given_name": "[First Name]",
+    "family_name": "[Last Name]",
+    "gender": "[GENDER_MALE/GENDER_FEMALE]",
+    "birth_date": "[YYYY-MM-DD format]",
+    "notes": "[Any special notes or preferences]",
+    "addresses": [
+      {
+        "street_address": "[Street Address]",
+        "city": "[City]",
+        "state": "[State]",
+        "postal_code": "[Zip Code]",
+        "country_code": "US",
+        "type": "HOME"
+      }
+    ],
+    "state": "ACTIVE",
+    "opt_ins": {
+      "sms": true/false,
+      "email": true/false
+    },
+    "first_visit": "[YYYY-MM-DD format - current date if new patient]"
+  },
+  "day": "[Day of week]",
+  "date": "[YYYY-MM-DD format]",
+  "dob": "[Date of birth in YYYY-MM-DD format]",
+  "time": "[HH:MM format, e.g., 09:00]",
+  "is_new_patient": true/false,
+  "slots_needed": [number - see slot calculation guide],
+  "doctor_for_appointment": "[Doctor name]",
+  "patient_details": {
+    "insurance": "[Insurance provider if provided]"
+  }
+}
+
+=== SLOT CALCULATION GUIDE ===
+
+Calculate slots_needed based on appointment type (each slot = 30 minutes):
+
+Standard Appointments (1 slot = 30 minutes):
+- Routine cleaning/check-up: 1 slot
+- Dental exam: 1 slot
+- Filling (simple): 1 slot
+- Emergency visit: 1 slot
+- Implant consultation: 1 slot
+- Orthodontic consultation: 1 slot
+
+Medium Appointments (2 slots = 1 hour):
+- Filling (complex): 2 slots
+- Crown preparation: 2 slots
+- Tooth extraction: 2 slots
+- Whitening treatment: 2 slots
+
+Long Appointments:
+- Implant surgery: 3 slots (1.5 hours)
+- Root canal: 4 slots (2 hours)
+
+The system automatically handles appointment duration based on slots_needed and ensures proper scheduling without conflicts.
+
+=== ERROR HANDLING PROCEDURES ===
+
+Tool Retry Protocol:
+- If a tool call experiences a delay or fails, retry up to 3 times for transient issues
+- Keep caller informed during retries with phrases like:
+  - "Just a moment while the system looks that up for me..."
+  - "Bear with me for one second while I check on that availability..."
+  - "Okay, I'm just looking at the schedule for you now..."
+
+Failure Escalation:
+- If tools repeatedly fail (after 3 attempts for a single action)
+- If clinic is closed and query cannot be immediately resolved
+- Proactively offer to log a callback request using log_callback_request()
+- Always ask for and record preferred callback time
+
+Response Handling:
+- get_appointment_details() and get_contact_details() may return null responses
+- Handle null responses gracefully by offering alternatives (new booking, double-check details)
+- Always provide helpful next steps even when tools don't return expected data
+
+System Continuity:
+- Maintain conversation flow even during tool delays
+- Use natural transition phrases to keep caller engaged
+- Never leave caller in silence during system processing

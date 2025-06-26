@@ -35,7 +35,12 @@ async def get_contact(request: GetContactRequest):
     Parameters: name, dob
     Used for booking appointments with existing patients
     """
-    try:        # First check local cache (handle case where dob might be None)
+    try:        
+        # Print DOB if provided (as requested)
+        if request.dob:
+            print(f"Fetching contact for patient DOB: {request.dob}")
+            
+        # First check local cache (handle case where dob might be None)
         cached_contact = cache_service.get_contact_by_patient(request.name, request.dob or "")
         
         if cached_contact:
