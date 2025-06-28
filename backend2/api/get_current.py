@@ -13,9 +13,9 @@ router = APIRouter()
 
 class CurrentDateTimeResponse(BaseModel):
     success: bool
-    current_day: str
-    current_date: str
-    current_datetime: str
+    day: str
+    date: str
+    datetime: str
     timezone: str
 
 @router.get("/get_current")
