@@ -32,7 +32,8 @@ from api import (
     callback_api,
     conversation_log_api,
     reschedule_api,
-    confirm_api
+    confirm_api,
+    get_current
 )
 
 # ========== DATA LOADING ==========
@@ -234,6 +235,7 @@ app.include_router(callback_api.router)
 app.include_router(conversation_log_api.router)
 app.include_router(reschedule_api.router)
 app.include_router(confirm_api.router)
+app.include_router(get_current.router)  # Add this line
 
 # ========== MAIN ==========
 

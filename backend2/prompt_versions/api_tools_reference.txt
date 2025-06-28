@@ -1,5 +1,5 @@
 API Tools Reference
-Technical Documentation for BrightSmile Dental Clinic AI Assistant
+Technical Documentation for Dental Associates of Jersey City
 
 === AVAILABLE TOOLS AND THEIR PARAMETERS ===
 

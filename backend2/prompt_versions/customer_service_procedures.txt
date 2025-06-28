@@ -1,5 +1,5 @@
 Customer Service Procedures
-General Inquiries and Support Guidelines for BrightSmile Dental Clinic AI Assistant
+General Inquiries and Support Guidelines for Dental Associates of Jersey City
 
 === OVERVIEW ===
 This document covers procedures for handling general inquiries, support requests, and various customer service scenarios beyond appointment booking. Use the {{knowledge_base}} and answer_faq_query(query) tool as primary resources.
@@ -160,7 +160,7 @@ Escalation Options:
 === CONVERSATION MANAGEMENT ===
 
 Maintaining Flow:
-- Keep conversations focused on BrightSmile Dental Clinic services
+- Keep conversations focused on Dental Associates of Jersey City services
 - Use natural, conversational language
 - Actively listen and acknowledge statements
 - Vary language to avoid repetition
