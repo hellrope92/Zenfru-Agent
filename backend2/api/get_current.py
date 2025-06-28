@@ -39,9 +39,9 @@ async def get_current() -> CurrentDateTimeResponse:
         
         return CurrentDateTimeResponse(
             success=True,
-            current_day=current_day,
-            current_date=current_date,
-            current_datetime=current_datetime,
+            day=current_day,
+            date=current_date,
+            datetime=current_datetime,
             timezone=timezone
         )
         
