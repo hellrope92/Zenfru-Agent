@@ -259,7 +259,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             "wall_start_time": start_datetime.strftime("%Y-%m-%d %H:%M:%S"),
             "wall_end_time": end_datetime.strftime("%Y-%m-%d %H:%M:%S"),
             "providers": providers,
-            "appointment_type_id": request.service_booked,
+            "appointment_type_id": "appointmenttypes/1",
             "operatory": operatory_resource.get("name"),  # Always use resource name
             "short_description": contact_info.get("short_description", ""),
             "notes": contact_info.get("notes", ""),
@@ -367,7 +367,7 @@ async def reschedule_patient_appointment(request: RescheduleRequest):
         else:
             print(f"   ❌ Failed to reschedule appointment through Kolla API")
             print(f"   Error response: {response.text}")
-            return {
+        return {
                 "success": False,
                 "message": f"Failed to reschedule appointment {request.appointment_id}. Please try again or contact the clinic directly.",
                 "status": "failed",
