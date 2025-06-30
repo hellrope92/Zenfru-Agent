@@ -87,9 +87,35 @@ def create_kolla_contact(contact_info: dict) -> Optional[str]:
     """Create a new contact in Kolla, return contact_id if successful."""
     url = f"{KOLLA_BASE_URL}/contacts"
     payload = contact_info.copy()
+    
     # Kolla expects 'name' to be a unique resource string, so omit it on create
     payload.pop('name', None)
+    
+    # Remove fields that should not be sent during contact creation
+    fields_to_remove = ['guarantor', 'preferred_provider']
+    for field in fields_to_remove:
+        payload.pop(field, None)
+    
+    # Set default required fields for Kolla contact creation
+    if 'state' not in payload:
+        payload['state'] = 'ACTIVE'
+    if 'type' not in payload:
+        payload['type'] = 'PATIENT'
+    
+    # Only set first_visit if it's not already provided and is valid
+    if 'first_visit' not in payload:
+        payload['first_visit'] = datetime.now().strftime("%Y-%m-%d")
+    else:
+        # Validate and fix first_visit format if it's invalid
+        try:
+            datetime.strptime(payload['first_visit'], "%Y-%m-%d")
+        except ValueError:
+            # If invalid date format, use current date
+            payload['first_visit'] = datetime.now().strftime("%Y-%m-%d")
+    
+    print(f"Creating contact with payload: {json.dumps(payload, indent=2)}")
     response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(payload))
+    print(f"Contact creation response: {response.status_code}, {response.text}")
     if response.status_code in (200, 201):
         return response.json().get('name')
     return None
@@ -128,7 +154,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
     try:
         # Use expanded contact info if provided
         if hasattr(request, 'contact_info') and request.contact_info:
-            contact_info = request.contact_info.dict(exclude_none=True)
+            contact_info = request.contact_info.model_dump(exclude_none=True)
         elif isinstance(request.contact, dict):
             contact_info = request.contact
         else:
@@ -139,6 +165,33 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             contact_info['phone_numbers'] = [{"number": contact_info['number'], "type": "MOBILE"}]
         if 'email' in contact_info and 'email_addresses' not in contact_info:
             contact_info['email_addresses'] = [{"address": contact_info['email'], "type": "HOME"}]
+
+        # Extract names from the request.name if given_name and family_name are not provided
+        if 'given_name' not in contact_info or 'family_name' not in contact_info:
+            name_parts = request.name.strip().split(' ', 1)
+            if 'given_name' not in contact_info:
+                contact_info['given_name'] = name_parts[0] if name_parts else request.name
+            if 'family_name' not in contact_info and len(name_parts) > 1:
+                contact_info['family_name'] = name_parts[1]
+            elif 'family_name' not in contact_info:
+                contact_info['family_name'] = ""
+
+        # Set birth_date from dob if provided
+        if request.dob and 'birth_date' not in contact_info:
+            contact_info['birth_date'] = request.dob
+
+        # Set default required fields for Kolla
+        if 'state' not in contact_info:
+            contact_info['state'] = 'ACTIVE'
+        if 'type' not in contact_info:
+            contact_info['type'] = 'PATIENT'
+        if 'first_visit' not in contact_info:
+            contact_info['first_visit'] = request.date
+
+        # Remove problematic fields that shouldn't be sent during creation
+        problematic_fields = ['guarantor', 'preferred_provider']
+        for field in problematic_fields:
+            contact_info.pop(field, None)
 
         # 1. Check if contact exists in Kolla
         contact_id = get_kolla_contact_id(contact_info)
