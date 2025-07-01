@@ -219,7 +219,7 @@ def create_debug_endpoints():
         """Debug endpoint to view the knowledge base"""
         return await debug_api.get_debug_knowledge_base(knowledge_base)
     
-    @app.get("/health", tags=["debug"])
+    @app.get("/healthz", tags=["debug"])
     async def render_health_check():
         """Health check endpoint for Render deployment"""
         return {"status": "ok"}
