@@ -285,7 +285,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             "providers": providers,
             "appointment_type_id": "appointmenttypes/1",
             "operatory": operatory_resource.get("name"),  # Always use resource name
-            "short_description": contact_info.get("short_description", ""),
+            "short_description":  request.service_booked or "New Patient Appointment through Zenfru",
             "notes": contact_info.get("notes", ""),
             "additional_data": contact_info.get("additional_data", {})
         }

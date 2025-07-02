@@ -102,190 +102,79 @@ async def find_appointment_by_phone(phone_number: str) -> Optional[str]:
         return None
 
 class FlexibleRescheduleRequest(BaseModel):
-    """Flexible request model that accepts various agent formats"""
-    # Patient identification - use phone instead of name+dob
-    phone: Optional[str] = None  # Primary patient identifier
-    appointment_id: Optional[str] = None  # If known, use directly
-    
-    # Time fields - agent can send any of these
-    new_date: Optional[str] = None
-    new_time: Optional[str] = None
+    appointment_id: str
+    date: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
-    wall_start_time: Optional[str] = None
-    wall_end_time: Optional[str] = None
-    
-    # Optional fields that agent might send
-    contact_id: Optional[str] = None
-    contact: Optional[Dict[str, Any]] = None
-    providers: Optional[list] = None
-    scheduler: Optional[Dict[str, Any]] = None
-    appointment_type_id: Optional[str] = None
-    operatory: Optional[str] = None
-    short_description: Optional[str] = None
     notes: Optional[str] = None
-    additional_data: Optional[Dict[str, Any]] = None
-    
-    # Legacy support
-    name: Optional[str] = None
-    dob: Optional[str] = None
-    reason: Optional[str] = None
-    new_slot: Optional[str] = None
 
 @router.post("/reschedule_patient_appointment")
 async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
     """
     Reschedule an existing appointment using Kolla API.
-    Can find appointment by phone number or use provided appointment_id.
-    Agent hits: POST /api/reschedule_patient_appointment
+    Accepts: appointment_id, date, start_time, end_time, notes
     """
     try:
-        # Determine appointment_id
+        print(f"🔄 RESCHEDULE_PATIENT_APPOINTMENT:")
+        print(f"   Appointment ID: {request.appointment_id}")
+        print(f"   Date: {request.date}")
+        print(f"   Start Time: {request.start_time}")
+        print(f"   End Time: {request.end_time}")
+        print(f"   Notes: {request.notes}")
+        
         appointment_id = request.appointment_id
-        
-        # If no appointment_id provided, try to find by phone number
-        if not appointment_id and request.phone:
-            print(f"Looking up appointment for phone: {request.phone}")
-            appointment_id = await find_appointment_by_phone(request.phone)
-            
         if not appointment_id:
-            if request.phone:
-                raise HTTPException(status_code=404, detail=f"No appointment found for phone number: {request.phone}")
-            else:
-                raise HTTPException(status_code=400, detail="Either appointment_id or phone number is required")
+            raise HTTPException(status_code=400, detail="appointment_id is required")
+
+        patch_data = {}
+        # Kolla expects wall_start_time and wall_end_time for updates, not start_time/end_time
+        if request.date and request.start_time:
+            print(f"   Combining date '{request.date}' and start_time '{request.start_time}'")
+            wall_start = combine_date_time_to_wall(request.date, request.start_time)
+            print(f"   Combined wall_start_time result: {wall_start}")
+            if not wall_start:
+                raise HTTPException(status_code=400, detail="Invalid date or start_time format")
+            patch_data["wall_start_time"] = wall_start
+        elif request.start_time:
+            raise HTTPException(status_code=400, detail="If you provide start_time, you must also provide date.")
         
-        print(f"Rescheduling appointment: {appointment_id}")
+        if request.date and request.end_time:
+            print(f"   Combining date '{request.date}' and end_time '{request.end_time}'")
+            wall_end = combine_date_time_to_wall(request.date, request.end_time)
+            print(f"   Combined wall_end_time result: {wall_end}")
+            if not wall_end:
+                raise HTTPException(status_code=400, detail="Invalid date or end_time format")
+            patch_data["wall_end_time"] = wall_end
+        elif request.end_time:
+            raise HTTPException(status_code=400, detail="If you provide end_time, you must also provide date.")
         
-        # Print phone number if provided (as requested)
-        if request.phone:
-            print(f"Rescheduling appointment for patient phone: {request.phone}")
-        
-        # Print DOB if provided (legacy support)
-        if request.dob:
-            print(f"Rescheduling appointment for patient DOB: {request.dob}")
-        
-        # Build the patch data from agent input
-        patch_data = build_patch_data(request)
-        
+        if request.notes:
+            patch_data["notes"] = request.notes
+
+        print(f"   Final patch_data: {patch_data}")
+
         if not patch_data:
             raise HTTPException(status_code=400, detail="No valid reschedule data provided")
-        
-        # Call Kolla API to reschedule
+
         url = f"{KOLLA_BASE_URL}/appointments/{appointment_id}"
+        print(f"   Sending PATCH to: {url}")
         response = requests.patch(url, headers=KOLLA_HEADERS, data=json.dumps(patch_data))
+        print(f"   Response status: {response.status_code}")
         
         if response.status_code in (200, 204):
-            return {
-                "success": True,
-                "message": f"Appointment {appointment_id} rescheduled successfully",
-                "appointment_id": appointment_id,
-                "patient_phone": request.phone,
-                "patient_name": request.name,
-                "patient_dob": request.dob,
-                "updated_fields": patch_data,
-                "status": "rescheduled"
-            }
+            print(f"   ✅ Success: Appointment rescheduled")
+            return {"success": True, "message": f"Appointment {appointment_id} rescheduled successfully", "appointment_id": appointment_id, "updated_fields": patch_data, "status": "rescheduled"}
         else:
-            return {
-                "success": False,
-                "message": f"Failed to reschedule appointment: {response.text}",
-                "status_code": response.status_code,
-                "appointment_id": appointment_id,
-                "status": "failed"
-            }
-            
+            print(f"   ❌ Failed: {response.text}")
+            return {"success": False, "message": f"Failed to reschedule appointment: {response.text}", "status_code": response.status_code, "appointment_id": appointment_id, "status": "failed"}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error rescheduling appointment: {str(e)}")
-
-def build_patch_data(request: FlexibleRescheduleRequest) -> Dict[str, Any]:
-    """
-    Build patch data for Kolla API from flexible agent request.
-    Maps agent fields to Kolla API expected format.
-    """
-    patch_data = {}
-    
-    # Handle time fields - priority order for determining new time
-    new_start_time = None
-    new_end_time = None
-    
-    # 1. Check for direct ISO format times
-    if request.start_time:
-        new_start_time = request.start_time
-    elif request.wall_start_time:
-        new_start_time = parse_wall_time_to_iso(request.wall_start_time)
-    elif request.new_date and request.new_time:
-        # Combine date and time
-        new_start_time = combine_date_time(request.new_date, request.new_time)
-    elif request.new_slot:
-        # Legacy support
-        new_start_time = request.new_slot
-    
-    if request.end_time:
-        new_end_time = request.end_time
-    elif request.wall_end_time:
-        new_end_time = parse_wall_time_to_iso(request.wall_end_time)
-    elif new_start_time:
-        # Calculate end time (default 30 minutes if not provided)
-        new_end_time = calculate_end_time(new_start_time)
-    
-    # Add time fields to patch data
-    if new_start_time:
-        patch_data["start_time"] = new_start_time
-    if new_end_time:
-        patch_data["end_time"] = new_end_time
-    
-    # Map other fields that might come from agent
-    field_mappings = {
-        "contact_id": "contact_id",
-        "contact": "contact",
-        "providers": "providers", 
-        "scheduler": "scheduler",
-        "appointment_type_id": "appointment_type_id",
-        "operatory": "operatory",
-        "short_description": "short_description",
-        "notes": "notes",
-        "additional_data": "additional_data"
-    }
-    
-    for agent_field, kolla_field in field_mappings.items():
-        value = getattr(request, agent_field, None)
-        if value is not None:
-            patch_data[kolla_field] = value
-    
-    # Handle legacy reason field
-    if request.reason and not patch_data.get("notes"):
-        patch_data["notes"] = f"Rescheduled: {request.reason}"
-    
-    return patch_data
-
-def parse_wall_time_to_iso(wall_time: str) -> Optional[str]:
-    """
-    Parse wall time format to ISO format.
-    Handles various wall time formats.
-    """
-    try:
-        # Try common formats
-        formats = [
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d %H:%M",
-            "%m/%d/%Y %H:%M:%S",
-            "%m/%d/%Y %H:%M"
-        ]
-        
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(wall_time, fmt)
-                return dt.isoformat() + "Z"
-            except ValueError:
-                continue
-        
-        # If no format matches, return as is (might already be ISO)
-        return wall_time
-        
-    except Exception:
-        return None
+        # Log the error for debugging
+        import traceback
+        print(f"   ❌ Error rescheduling appointment: {str(e)}")
+        traceback.print_exc()
+        return {"success": False, "message": "An error occurred while rescheduling the appointment. Please contact the clinic directly.", "status": "error", "error": str(e)}
 
 def combine_date_time(date_str: str, time_str: str) -> Optional[str]:
     """
@@ -327,18 +216,43 @@ def combine_date_time(date_str: str, time_str: str) -> Optional[str]:
     except Exception:
         return None
 
-def calculate_end_time(start_time: str, duration_minutes: int = 30) -> Optional[str]:
+def combine_date_time_to_wall(date_str: str, time_str: str) -> Optional[str]:
     """
-    Calculate end time based on start time and duration.
+    Combine separate date and time strings into wall time format for Kolla.
+    Returns format: "YYYY-MM-DD HH:MM:SS"
     """
     try:
-        # Parse start time
-        start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        # Parse date
+        date_formats = ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"]
+        date_obj = None
         
-        # Add duration
-        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        for fmt in date_formats:
+            try:
+                date_obj = datetime.strptime(date_str, fmt).date()
+                break
+            except ValueError:
+                continue
         
-        return end_dt.isoformat().replace("+00:00", "Z")
+        if not date_obj:
+            return None
+        
+        # Parse time
+        time_formats = ["%H:%M:%S", "%H:%M", "%I:%M %p", "%I:%M:%S %p"]
+        time_obj = None
+        
+        for fmt in time_formats:
+            try:
+                time_obj = datetime.strptime(time_str, fmt).time()
+                break
+            except ValueError:
+                continue
+        
+        if not time_obj:
+            return None
+        
+        # Combine and return wall time format
+        dt = datetime.combine(date_obj, time_obj)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
         
     except Exception:
         return None
@@ -350,10 +264,7 @@ async def reschedule_appointment_legacy(request: RescheduleRequest):
     # Convert old format to new format
     flexible_request = FlexibleRescheduleRequest(
         appointment_id=getattr(request, 'appointment_id', '') or request.reason,
-        name=request.name,
-        dob=request.dob,
-        reason=request.reason,
-        new_slot=request.new_slot
+        notes=getattr(request, 'reason', None)
     )
     
     return await reschedule_patient_appointment(flexible_request)

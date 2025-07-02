@@ -137,11 +137,6 @@ def create_booking_endpoints():
     ):
         """Book a new patient appointment using GetKolla API"""
         return await booking_api.book_patient_appointment(request, getkolla_service)
-    
-    @app.post("/api/reschedule_patient_appointment", tags=["booking"])
-    async def reschedule_patient_appointment(request: booking_api.RescheduleRequest):
-        """Reschedule an existing patient appointment (print only)"""
-        return await booking_api.reschedule_patient_appointment(request)
 
 def create_patient_services_endpoints():
     """Create patient services endpoints with proper dependency injection"""
