@@ -162,6 +162,83 @@ def find_resource(resources, resource_type, display_name=None):
                 return r
     return None
 
+async def check_time_slot_availability(start_datetime: datetime, end_datetime: datetime, operatory_name: str = None) -> bool:
+    """
+    Check if the requested time slot is available by querying existing appointments.
+    Returns True if available, False if there's a conflict.
+    """
+    try:
+        # Get all appointments from Kolla
+        url = f"{KOLLA_BASE_URL}/appointments"
+        response = requests.get(url, headers=KOLLA_HEADERS, timeout=10)
+        
+        if response.status_code != 200:
+            print(f"Error fetching appointments for availability check: {response.status_code}")
+            # If we can't check, allow the booking (fail open)
+            return True
+            
+        appointments_data = response.json()
+        existing_appointments = appointments_data.get("appointments", [])
+        
+        # Convert our datetime to the format we expect from Kolla
+        requested_start = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        requested_end = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        
+        print(f"   Checking availability for: {requested_start} - {requested_end}")
+        if operatory_name:
+            print(f"   In operatory: {operatory_name}")
+        
+        # Check each existing appointment for conflicts
+        for appointment in existing_appointments:
+            # Skip cancelled or completed appointments
+            if appointment.get("cancelled") or appointment.get("completed"):
+                continue
+                
+            # Get appointment times
+            appt_wall_start = appointment.get("wall_start_time", "")
+            appt_wall_end = appointment.get("wall_end_time", "")
+            appt_operatory = None
+            
+            # Check operatory if specified
+            if operatory_name:
+                resources = appointment.get("resources", [])
+                for resource in resources:
+                    if resource.get("type") == "operatory":
+                        appt_operatory = resource.get("name")
+                        break
+                
+                # If different operatory, no conflict
+                if appt_operatory and appt_operatory != operatory_name:
+                    continue
+            
+            # Check for time overlap
+            if appt_wall_start and appt_wall_end:
+                try:
+                    # Parse existing appointment times
+                    existing_start = datetime.strptime(appt_wall_start, "%Y-%m-%d %H:%M:%S")
+                    existing_end = datetime.strptime(appt_wall_end, "%Y-%m-%d %H:%M:%S")
+                    
+                    # Check if there's any overlap
+                    # Overlap occurs if: start_time < existing_end AND end_time > existing_start
+                    if start_datetime < existing_end and end_datetime > existing_start:
+                        appt_id = appointment.get("name", "Unknown")
+                        print(f"   ❌ Time conflict found with appointment {appt_id}")
+                        print(f"   Existing: {appt_wall_start} - {appt_wall_end}")
+                        print(f"   Requested: {requested_start} - {requested_end}")
+                        return False
+                        
+                except ValueError as e:
+                    print(f"   Warning: Could not parse appointment time format: {e}")
+                    continue
+        
+        print(f"   ✅ Time slot is available")
+        return True
+        
+    except Exception as e:
+        print(f"   Error checking time slot availability: {e}")
+        # If there's an error checking, allow the booking (fail open)
+        return True
+
 async def book_patient_appointment(request: BookAppointmentRequest, getkolla_service: GetKollaService):
     """Book a new patient appointment using Kolla API, handling contact lookup/creation."""
     print(f"\U0001F4C5 BOOK_PATIENT_APPOINTMENT:")
@@ -229,13 +306,33 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     "status": "error",
                     "error": "contact_creation_failed"
                 }
+
         # 3. Prepare appointment data for Kolla
-        start_datetime = convert_time_to_datetime(request.date, request.time)
-        service_duration = getkolla_service._get_service_duration(request.service_booked)
-        end_datetime = start_datetime + timedelta(minutes=service_duration)
+        try:
+            start_datetime = convert_time_to_datetime(request.date, request.time)
+            service_duration = getkolla_service._get_service_duration(request.service_booked)
+            end_datetime = start_datetime + timedelta(minutes=service_duration)
+        except Exception as e:
+            print(f"Error preparing appointment data: {e}")
+            return {
+                "success": False,
+                "message": "Invalid date or time format provided.",
+                "status": "error",
+                "error": f"date_time_conversion_failed: {str(e)}"
+            }
 
         # Fetch resources from Kolla
-        resources = get_kolla_resources()
+        try:
+            resources = get_kolla_resources()
+        except Exception as e:
+            print(f"Error fetching resources: {e}")
+            return {
+                "success": False,
+                "message": "Failed to fetch clinic resources.",
+                "status": "error",
+                "error": f"resource_fetch_failed: {str(e)}"
+            }
+
         # Find provider resource by display name if provided
         provider_display_name = getattr(request, 'doctor_for_appointment', None)
         provider_resource = None
@@ -243,6 +340,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             provider_resource = find_resource(resources, "PROVIDER", display_name=provider_display_name)
         if not provider_resource:
             provider_resource = find_resource(resources, "PROVIDER")
+        
         # Find operatory resource by display name if provided
         operatory_val = getattr(request, 'operatory', None) or contact_info.get('operatory', None)
         operatory_resource = None
@@ -263,7 +361,18 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "message": "No operatory resource found in Kolla.",
                 "status": "error",
                 "error": "operatory_not_found"
-            }        # Prepare providers list
+            }
+
+        # 4. Check for existing appointments at the requested time to prevent double booking
+        if not await check_time_slot_availability(start_datetime, end_datetime, operatory_resource.get("name")):
+            return {
+                "success": False,
+                "message": f"The requested time slot from {request.time} on {request.date} is already booked. Please choose a different time.",
+                "status": "time_slot_unavailable",
+                "error": "time_slot_conflict"
+            }
+
+        # Prepare providers list
         providers = []
         if provider_resource:
             providers.append({
@@ -300,7 +409,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         elif family_name:
             appointment_data["contact"]["name"] = family_name
         # If no given/family name, keep contact_id as name
-        # 4. Book appointment in Kolla
+        # 5. Book appointment in Kolla
         url = f"{KOLLA_BASE_URL}/appointments"
         response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(appointment_data))
         if response.status_code in (200, 201):
