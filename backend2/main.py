@@ -17,6 +17,7 @@ from pathlib import Path
 # Import services
 from services.getkolla_service import GetKollaService
 from services.availability_service import AvailabilityService
+from services.patient_interaction_logger import patient_logger
 
 # Import API routers
 from api import (
@@ -33,7 +34,8 @@ from api import (
     conversation_log_api,
     reschedule_api,
     confirm_api,
-    get_current
+    get_current,
+    reporting_api
 )
 
 # ========== DATA LOADING ==========
@@ -235,7 +237,8 @@ app.include_router(callback_api.router)
 app.include_router(conversation_log_api.router)
 app.include_router(reschedule_api.router)
 app.include_router(confirm_api.router)
-app.include_router(get_current.router, prefix="/api", tags=["datetime"])  # Add this line
+app.include_router(get_current.router, prefix="/api", tags=["datetime"])
+app.include_router(reporting_api.router)
 # ========== MAIN ==========
 
 if __name__ == "__main__":    
@@ -271,10 +274,26 @@ if __name__ == "__main__":
     print("   - GET  /api/getkolla/test")
     print("   - GET  /api/debug/* (for testing)")
     print()
+    print("📈 Reporting & Analytics Module:")
+    print("   - POST /api/configure_reporting (setup email/config)")
+    print("   - GET  /api/reporting_config (view current config)")
+    print("   - POST /api/generate_report (manual report generation)")
+    print("   - GET  /api/interaction_statistics?days=7")
+    print("   - GET  /api/daily_interactions/{YYYY-MM-DD}")
+    print("   - GET  /api/interaction_summary (today's summary)")
+    print("   - POST /api/test_email (test email configuration)")
+    print("   - GET  /api/log_files (list available log files)")
+    print()
     print(f"📊 Data Status:")
     print(f"   Schedule: {len(SCHEDULE)} days loaded")
     print(f"   Existing Bookings: {len(BOOKINGS)} appointments")
     print(f"   Knowledge Base: {len(KNOWLEDGE_BASE)} sections")
+    print()
+    print("📝 Patient Interaction Logging:")
+    print(f"   Log Directory: {patient_logger.log_directory}")
+    print(f"   Daily Report Time: {patient_logger.config['reporting']['daily_email_time']}")
+    print(f"   Email Recipients: {len(patient_logger.config['email']['recipients'])} configured")
+    print("   Automatic logging enabled for all patient interactions")
     print()
     
     uvicorn.run(app, host="0.0.0.0", port=8000)

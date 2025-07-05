@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from .models import RescheduleRequest
+from services.patient_interaction_logger import patient_logger
 
 KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
 KOLLA_HEADERS = {
@@ -163,9 +164,40 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         
         if response.status_code in (200, 204):
             print(f"   ✅ Success: Appointment rescheduled")
+            
+            # Log successful rescheduling interaction - let the logger fetch patient details
+            patient_logger.log_interaction(
+                interaction_type="rescheduling",
+                success=True,
+                appointment_id=appointment_id,
+                details={
+                    "date": request.date,
+                    "start_time": request.start_time,
+                    "end_time": request.end_time,
+                    "notes": request.notes,
+                    "updated_fields": patch_data
+                }
+            )
+            
             return {"success": True, "message": f"Appointment {appointment_id} rescheduled successfully", "appointment_id": appointment_id, "updated_fields": patch_data, "status": "rescheduled"}
         else:
             print(f"   ❌ Failed: {response.text}")
+            
+            # Log failed rescheduling interaction - let the logger fetch patient details
+            patient_logger.log_interaction(
+                interaction_type="rescheduling",
+                success=False,
+                appointment_id=appointment_id,
+                error_message=f"Kolla API error: {response.text}",
+                details={
+                    "date": request.date,
+                    "start_time": request.start_time,
+                    "end_time": request.end_time,
+                    "notes": request.notes,
+                    "status_code": response.status_code
+                }
+            )
+            
             return {"success": False, "message": f"Failed to reschedule appointment: {response.text}", "status_code": response.status_code, "appointment_id": appointment_id, "status": "failed"}
     except HTTPException:
         raise
@@ -174,6 +206,22 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         import traceback
         print(f"   ❌ Error rescheduling appointment: {str(e)}")
         traceback.print_exc()
+        
+        # Log failed rescheduling interaction due to exception - let the logger fetch patient details
+        patient_logger.log_interaction(
+            interaction_type="rescheduling",
+            success=False,
+            appointment_id=request.appointment_id,
+            error_message=str(e),
+            details={
+                "date": request.date,
+                "start_time": request.start_time,
+                "end_time": request.end_time,
+                "notes": request.notes,
+                "error_type": "exception"
+            }
+        )
+        
         return {"success": False, "message": "An error occurred while rescheduling the appointment. Please contact the clinic directly.", "status": "error", "error": str(e)}
 
 def combine_date_time(date_str: str, time_str: str) -> Optional[str]:

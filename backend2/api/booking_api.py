@@ -14,6 +14,7 @@ from .models import BookAppointmentRequest, RescheduleRequest, ContactInfo
 
 # Import dependencies (will be injected from main.py)
 from services.getkolla_service import GetKollaService
+from services.patient_interaction_logger import patient_logger
 
 router = APIRouter(prefix="/api", tags=["booking"])
 
@@ -252,6 +253,16 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
     print(f"   Doctor: {request.doctor_for_appointment}")
     print(f"   New Patient: {request.is_new_patient}")
     print(f"   Patient Details: {request.patient_details}")
+    
+    # Extract contact number for logging
+    contact_number = None
+    if isinstance(request.contact, str):
+        contact_number = request.contact
+    elif isinstance(request.contact, dict):
+        contact_number = request.contact.get('number') or request.contact.get('phone_number')
+    elif hasattr(request.contact, 'number'):
+        contact_number = request.contact.number
+    
     try:
         # Use expanded contact info if provided
         if hasattr(request, 'contact_info') and request.contact_info:
@@ -416,6 +427,24 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             appointment_id = response.json().get('name', f"APT-{uuid.uuid4().hex[:8].upper()}")
             print(f"   ✅ Appointment successfully booked through Kolla API!")
             print(f"   📋 Appointment ID: {appointment_id}")
+            
+            # Log successful booking interaction
+            patient_logger.log_interaction(
+                interaction_type="booking",
+                patient_name=request.name,
+                contact_number=contact_number,
+                success=True,
+                appointment_id=appointment_id,
+                service_type=request.service_booked,
+                doctor=request.doctor_for_appointment,
+                details={
+                    "date": request.date,
+                    "time": request.time,
+                    "is_new_patient": request.is_new_patient,
+                    "day": request.day
+                }
+            )
+            
             return {
                 "success": True,
                 "appointment_id": appointment_id,
@@ -432,6 +461,25 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             }
         else:
             print(f"   ❌ Failed to book appointment through Kolla API")
+            
+            # Log failed booking interaction
+            patient_logger.log_interaction(
+                interaction_type="booking",
+                patient_name=request.name,
+                contact_number=contact_number,
+                success=False,
+                service_type=request.service_booked,
+                doctor=request.doctor_for_appointment,
+                error_message=f"Kolla API error: {response.text}",
+                details={
+                    "date": request.date,
+                    "time": request.time,
+                    "is_new_patient": request.is_new_patient,
+                    "day": request.day,
+                    "status_code": response.status_code
+                }
+            )
+            
             return {
                 "success": False,
                 "message": f"Failed to book appointment for {request.name}. Please try again or contact the clinic directly.",
@@ -440,6 +488,25 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             }
     except Exception as e:
         print(f"   ❌ Error booking appointment: {e}")
+        
+        # Log failed booking interaction due to exception
+        patient_logger.log_interaction(
+            interaction_type="booking",
+            patient_name=request.name,
+            contact_number=contact_number,
+            success=False,
+            service_type=request.service_booked,
+            doctor=request.doctor_for_appointment,
+            error_message=str(e),
+            details={
+                "date": request.date,
+                "time": request.time,
+                "is_new_patient": request.is_new_patient,
+                "day": request.day,
+                "error_type": "exception"
+            }
+        )
+        
         return {
             "success": False,
             "message": f"An error occurred while booking the appointment. Please contact the clinic directly.",
@@ -447,71 +514,122 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             "error": str(e)
         }
 
-async def reschedule_patient_appointment(request: RescheduleRequest):
-    """Reschedule an existing patient appointment using Kolla API"""
+# async def reschedule_patient_appointment(request: RescheduleRequest):
+#     """Reschedule an existing patient appointment using Kolla API"""
     
-    print(f"🔄 RESCHEDULE_PATIENT_APPOINTMENT:")
-    print(f"   Appointment ID: {request.appointment_id}")
-    print(f"   New Start Time: {request.start_time}")
-    print(f"   New End Time: {request.end_time}")
-    print(f"   Notes: {request.notes}")
+#     print(f"🔄 RESCHEDULE_PATIENT_APPOINTMENT:")
+#     print(f"   Appointment ID: {request.appointment_id}")
+#     print(f"   New Start Time: {request.start_time}")
+#     print(f"   New End Time: {request.end_time}")
+#     print(f"   Notes: {request.notes}")
     
-    try:
-        # Convert ISO datetime strings to the format Kolla expects
-        start_dt = datetime.fromisoformat(request.start_time.replace('Z', '+00:00'))
-        end_dt = datetime.fromisoformat(request.end_time.replace('Z', '+00:00'))
+#     try:
+#         # Convert ISO datetime strings to the format Kolla expects
+#         start_dt = datetime.fromisoformat(request.start_time.replace('Z', '+00:00'))
+#         end_dt = datetime.fromisoformat(request.end_time.replace('Z', '+00:00'))
         
-        # Format for Kolla API (assuming it expects local time format)
-        wall_start_time = start_dt.strftime("%Y-%m-%d %H:%M:%S")
-        wall_end_time = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+#         # Format for Kolla API (assuming it expects local time format)
+#         wall_start_time = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+#         wall_end_time = end_dt.strftime("%Y-%m-%d %H:%M:%S")
         
-        # Prepare update data for Kolla
-        update_data = {
-            "wall_start_time": wall_start_time,
-            "wall_end_time": wall_end_time
-        }
+#         # Prepare update data for Kolla
+#         update_data = {
+#             "wall_start_time": wall_start_time,
+#             "wall_end_time": wall_end_time
+#         }
         
-        # Add notes if provided
-        if request.notes:
-            update_data["notes"] = request.notes
+#         # Add notes if provided
+#         if request.notes:
+#             update_data["notes"] = request.notes
         
-        # Make API call to update the appointment in Kolla
-        url = f"{KOLLA_BASE_URL}/appointments/{request.appointment_id}"
-        response = requests.patch(url, headers=KOLLA_HEADERS, data=json.dumps(update_data))
+#         # Make API call to update the appointment in Kolla
+#         url = f"{KOLLA_BASE_URL}/appointments/{request.appointment_id}"
+#         response = requests.patch(url, headers=KOLLA_HEADERS, data=json.dumps(update_data))
         
-        if response.status_code in (200, 204):
-            print(f"   ✅ Appointment successfully rescheduled through Kolla API!")
-            print(f"   📋 Updated Appointment ID: {request.appointment_id}")
+#         if response.status_code in (200, 204):
+#             print(f"   ✅ Appointment successfully rescheduled through Kolla API!")
+#             print(f"   📋 Updated Appointment ID: {request.appointment_id}")
             
-            return {
-                "success": True,
-                "message": f"Appointment {request.appointment_id} successfully rescheduled",
-                "status": "confirmed",
-                "appointment_details": {
-                    "appointment_id": request.appointment_id,
-                    "start_time": request.start_time,
-                    "end_time": request.end_time,
-                    "notes": request.notes,
-                    "wall_start_time": wall_start_time,
-                    "wall_end_time": wall_end_time,
-                    "timestamp": datetime.now().isoformat()
-                }
-            }
-        else:
-            print(f"   ❌ Failed to reschedule appointment through Kolla API")
-            print(f"   Error response: {response.text}")
-        return {
-                "success": False,
-                "message": f"Failed to reschedule appointment {request.appointment_id}. Please try again or contact the clinic directly.",
-                "status": "failed",
-                "error": response.text
-            }
+#             # Log successful rescheduling interaction
+#             patient_logger.log_interaction(
+#                 interaction_type="rescheduling",
+#                 patient_name=request.name if hasattr(request, 'name') and request.name else None,
+#                 contact_number=None,  # Contact number not available in reschedule request
+#                 success=True,
+#                 appointment_id=request.appointment_id,
+#                 details={
+#                     "old_start_time": request.start_time,
+#                     "old_end_time": request.end_time,
+#                     "new_wall_start_time": wall_start_time,
+#                     "new_wall_end_time": wall_end_time,
+#                     "notes": request.notes,
+#                     "reason": request.reason if hasattr(request, 'reason') else None
+#                 }
+#             )
             
-    except Exception as e:
-        print(f"   ❌ Error rescheduling appointment: {e}")
-        return {
-            "success": False,
-            "message": f"An error occurred while rescheduling the appointment. Please contact the clinic directly.",
-            "status": "error",
-            "error": str(e)
-        }
+#             return {
+#                 "success": True,
+#                 "message": f"Appointment {request.appointment_id} successfully rescheduled",
+#                 "status": "confirmed",
+#                 "appointment_details": {
+#                     "appointment_id": request.appointment_id,
+#                     "start_time": request.start_time,
+#                     "end_time": request.end_time,
+#                     "notes": request.notes,
+#                     "wall_start_time": wall_start_time,
+#                     "wall_end_time": wall_end_time,
+#                     "timestamp": datetime.now().isoformat()
+#                 }
+#             }
+#         else:
+#             print(f"   ❌ Failed to reschedule appointment through Kolla API")
+#             print(f"   Error response: {response.text}")
+            
+#             # Log failed rescheduling interaction
+#             patient_logger.log_interaction(
+#                 interaction_type="rescheduling",
+#                 patient_name=request.name if hasattr(request, 'name') and request.name else None,
+#                 contact_number=None,
+#                 success=False,
+#                 appointment_id=request.appointment_id,
+#                 error_message=f"Kolla API error: {response.text}",
+#                 details={
+#                     "requested_start_time": request.start_time,
+#                     "requested_end_time": request.end_time,
+#                     "notes": request.notes,
+#                     "status_code": response.status_code
+#                 }
+#             )
+            
+#             return {
+#                 "success": False,
+#                 "message": f"Failed to reschedule appointment {request.appointment_id}. Please try again or contact the clinic directly.",
+#                 "status": "failed",
+#                 "error": response.text
+#             }
+            
+#     except Exception as e:
+#         print(f"   ❌ Error rescheduling appointment: {e}")
+        
+#         # Log failed rescheduling interaction due to exception
+#         patient_logger.log_interaction(
+#             interaction_type="rescheduling",
+#             patient_name=request.name if hasattr(request, 'name') and request.name else None,
+#             contact_number=None,
+#             success=False,
+#             appointment_id=request.appointment_id,
+#             error_message=str(e),
+#             details={
+#                 "requested_start_time": request.start_time,
+#                 "requested_end_time": request.end_time,
+#                 "notes": request.notes,
+#                 "error_type": "exception"
+#             }
+#         )
+        
+#         return {
+#             "success": False,
+#             "message": f"An error occurred while rescheduling the appointment. Please contact the clinic directly.",
+#             "status": "error",
+#             "error": str(e)
+#         }

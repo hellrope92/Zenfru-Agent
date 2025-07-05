@@ -1,0 +1,22 @@
+{
+  "email": {
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "use_tls": true,
+    "username": "",
+    "password": "",
+    "recipients": [],
+    "sender_name": "BrightSmile Dental AI Assistant"
+  },
+  "reporting": {
+    "daily_email_time": "17:00",
+    "timezone": "UTC",
+    "include_patient_details": true,
+    "include_statistics": true,
+    "max_retries": 3
+  },
+  "fallback": {
+    "backup_email": "",
+    "log_to_file_only": false
+  }
+}

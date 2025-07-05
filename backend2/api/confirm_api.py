@@ -2,6 +2,7 @@ import requests
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from services.patient_interaction_logger import patient_logger
 
 KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
 KOLLA_HEADERS = {
@@ -51,6 +52,19 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
         response = requests.post(url, headers=KOLLA_HEADERS, json=payload)
         
         if response.status_code in (200, 204):
+            # Log successful confirmation interaction - let the logger fetch patient details
+            patient_logger.log_interaction(
+                interaction_type="confirmation",
+                success=True,
+                appointment_id=request.appointment_id,
+                details={
+                    "confirmed": request.confirmed,
+                    "confirmation_type": request.confirmation_type,
+                    "notes": request.notes,
+                    "patient_dob": request.dob
+                }
+            )
+            
             return {
                 "success": True,
                 "message": f"Appointment {request.appointment_id} confirmed successfully.",
@@ -63,6 +77,21 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 "status": "confirmed"
             }
         else:
+            # Log failed confirmation interaction - let the logger fetch patient details
+            patient_logger.log_interaction(
+                interaction_type="confirmation",
+                success=False,
+                appointment_id=request.appointment_id,
+                error_message=f"Kolla API error: {response.text}",
+                details={
+                    "confirmed": request.confirmed,
+                    "confirmation_type": request.confirmation_type,
+                    "notes": request.notes,
+                    "patient_dob": request.dob,
+                    "status_code": response.status_code
+                }
+            )
+            
             return {
                 "success": False,
                 "message": f"Failed to confirm appointment: {response.text}",
@@ -71,4 +100,19 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 "status": "failed"
             }
     except Exception as e:
+        # Log failed confirmation interaction due to exception - let the logger fetch patient details
+        patient_logger.log_interaction(
+            interaction_type="confirmation",
+            success=False,
+            appointment_id=request.appointment_id,
+            error_message=str(e),
+            details={
+                "confirmed": request.confirmed,
+                "confirmation_type": request.confirmation_type,
+                "notes": request.notes,
+                "patient_dob": request.dob,
+                "error_type": "exception"
+            }
+        )
+        
         raise HTTPException(status_code=500, detail=f"Error confirming appointment: {str(e)}")

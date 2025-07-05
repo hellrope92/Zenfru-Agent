@@ -168,10 +168,20 @@ class LocalCacheService:
             
         patient_dob = contact.get("birth_date", "")
         
+        # Extract phone number from contact
+        patient_phone = ""
+        phone_numbers = contact.get("phone_numbers", [])
+        primary_phone = contact.get("primary_phone_number", "")
+        
+        if primary_phone:
+            patient_phone = primary_phone
+        elif phone_numbers and len(phone_numbers) > 0:
+            patient_phone = phone_numbers[0].get("number", "")
+        
         cursor.execute('''
-            INSERT OR REPLACE INTO appointments (appointment_id, patient_name, patient_dob, data, last_updated)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (appointment_id, patient_name, patient_dob, json.dumps(appointment_data), datetime.now().isoformat()))
+            INSERT OR REPLACE INTO appointments (appointment_id, patient_name, patient_dob, patient_phone, data, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (appointment_id, patient_name, patient_dob, patient_phone, json.dumps(appointment_data), datetime.now().isoformat()))
         
         conn.commit()
         conn.close()

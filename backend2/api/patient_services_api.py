@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 
 # Import shared models
 from .models import CallbackRequest, SendFormRequest, FAQRequest, ConversationSummaryRequest
+from services.patient_interaction_logger import patient_logger
 
 router = APIRouter(prefix="/api", tags=["patient-services"])
 
@@ -64,6 +65,18 @@ async def send_new_patient_form(request: SendFormRequest, knowledge_base: Dict):
     print(f"   Form URL: {form_url}")
     print(f"   ✅ [SIMULATION] SMS would be sent!")
     
+    # Log new patient form interaction
+    patient_logger.log_interaction(
+        interaction_type="new_patient_form",
+        patient_name=None,  # Patient name not available in this API
+        contact_number=request.contact_number,
+        success=True,
+        details={
+            "form_url": form_url,
+            "simulation_mode": True
+        }
+    )
+    
     return {
         "success": True,
         "message": f"[SIMULATION] New patient forms would be sent to {request.contact_number}",
@@ -96,6 +109,19 @@ async def log_callback_request(request: CallbackRequest, callback_requests: List
     print(f"   ✅ Callback request logged successfully!")
     print(f"   📋 Callback ID: {callback_id}")
     
+    # Log callback request interaction
+    patient_logger.log_interaction(
+        interaction_type="callback",
+        patient_name=request.name,
+        contact_number=request.contact_number,
+        success=True,
+        details={
+            "callback_id": callback_id,
+            "preferred_callback_time": request.preferred_callback_time,
+            "status": "pending"
+        }
+    )
+    
     return {
         "success": True,
         "callback_id": callback_id,
@@ -113,6 +139,19 @@ async def answer_faq_query(request: FAQRequest, knowledge_base: Dict):
     
     print(f"   💡 Answer: {answer}")
     print(f"   📚 Source: {source}")
+    
+    # Log FAQ interaction
+    patient_logger.log_interaction(
+        interaction_type="faq",
+        patient_name=None,  # Patient name not available in this API
+        contact_number=None,  # Contact number not available in this API
+        success=True,
+        details={
+            "query": request.query,
+            "answer": answer,
+            "source": source
+        }
+    )
     
     return {
         "success": True,
@@ -157,6 +196,21 @@ async def log_conversation_summary(request: ConversationSummaryRequest, conversa
     
     print(f"   ✅ Conversation summary logged successfully!")
     print(f"   📋 Summary ID: {summary_id}")
+    
+    # Log conversation summary interaction as misc category
+    patient_logger.log_interaction(
+        interaction_type="misc",
+        patient_name=request.patient_name,
+        contact_number=None,  # Contact number not available in this API
+        success=True,
+        details={
+            "summary_id": summary_id,
+            "primary_intent": request.primary_intent,
+            "outcome": request.outcome,
+            "call_duration": request.call_duration,
+            "type": "conversation_summary"
+        }
+    )
     
     return {
         "success": True,
