@@ -105,33 +105,33 @@ class PatientInteractionLogger:
     
     def _fetch_appointment_details(self, appointment_id: str) -> Dict[str, Optional[str]]:
         """
-        Fetch appointment details from local cache using appointment_id
+        Enhanced method to fetch appointment details from local cache using appointment_id
         Returns patient_name, contact_number, service_type, and doctor
         """
         if not appointment_id:
             return {"patient_name": None, "contact_number": None, "service_type": None, "doctor": None}
         
         try:
-            # Clean appointment_id - remove 'appointments/' prefix if present
+            # Clean appointment_id and try different formats
             clean_id = appointment_id.replace("appointments/", "") if appointment_id.startswith("appointments/") else appointment_id
             full_id = f"appointments/{clean_id}"
             
-            # Try both formats
-            appointment_data = self.cache_service.get_appointment_by_id(full_id)
-            if not appointment_data:
-                appointment_data = self.cache_service.get_appointment_by_id(clean_id)
+            # Try multiple formats
+            appointment_data = None
+            for test_id in [full_id, clean_id, appointment_id]:
+                appointment_data = self.cache_service.get_appointment_by_id(test_id)
+                if appointment_data:
+                    break
             
             if appointment_data:
-                # Also try to get stored patient info from the database table
-                stored_info = self._get_stored_appointment_info(full_id) or self._get_stored_appointment_info(clean_id)
-                
                 # Extract patient details from appointment data
                 contact = appointment_data.get("contact", {})
                 
-                # Get patient name
+                # Get patient name from contact data
+                patient_name = None
+                contact_name = contact.get("name", "")
                 given_name = contact.get("given_name", "")
                 family_name = contact.get("family_name", "")
-                contact_name = contact.get("name", "")
                 
                 if contact_name:
                     patient_name = contact_name
@@ -139,35 +139,45 @@ class PatientInteractionLogger:
                     patient_name = f"{given_name} {family_name}"
                 elif given_name:
                     patient_name = given_name
-                elif stored_info:
-                    patient_name = stored_info.get("patient_name")
-                else:
-                    patient_name = None
+                elif family_name:
+                    patient_name = family_name
                 
-                # Get contact number from phone_numbers array
+                # Get contact number 
                 contact_number = None
-                phone_numbers = contact.get("phone_numbers", [])
                 primary_phone = contact.get("primary_phone_number", "")
-                
                 if primary_phone:
                     contact_number = primary_phone
-                elif phone_numbers and len(phone_numbers) > 0:
-                    contact_number = phone_numbers[0].get("number", "")
-                elif stored_info and stored_info.get("patient_phone"):
-                    contact_number = stored_info.get("patient_phone")
+                else:
+                    phone_numbers = contact.get("phone_numbers", [])
+                    if phone_numbers and len(phone_numbers) > 0:
+                        phone_data = phone_numbers[0]
+                        if isinstance(phone_data, dict):
+                            contact_number = phone_data.get("number", "")
+                        else:
+                            contact_number = str(phone_data)
                 
-                # Get service/procedure information
+                # Get service information
                 service_type = (appointment_data.get("service") or 
                               appointment_data.get("procedure") or 
                               appointment_data.get("appointment_type") or
-                              appointment_data.get("type"))
+                              appointment_data.get("type") or
+                              appointment_data.get("service_type") or
+                              appointment_data.get("short_description"))
                 
                 # Get doctor/provider information
-                doctor = (appointment_data.get("doctor") or 
-                         appointment_data.get("provider") or
-                         appointment_data.get("practitioner"))
+                doctor = None
+                providers = appointment_data.get("providers", [])
+                if providers and len(providers) > 0:
+                    provider = providers[0]
+                    doctor = provider.get("display_name") or provider.get("name") or provider.get("remote_id")
                 
-                print(f"📋 Fetched appointment details for {appointment_id}: {patient_name}, {contact_number}")
+                if not doctor:
+                    doctor = (appointment_data.get("doctor") or 
+                             appointment_data.get("provider") or
+                             appointment_data.get("practitioner") or
+                             appointment_data.get("provider_name"))
+                
+                print(f"📋 Fetched appointment details for {appointment_id}: {patient_name}, {contact_number}, {service_type}")
                 return {
                     "patient_name": patient_name,
                     "contact_number": contact_number,
@@ -181,34 +191,6 @@ class PatientInteractionLogger:
         except Exception as e:
             print(f"❌ Error fetching appointment details for {appointment_id}: {e}")
             return {"patient_name": None, "contact_number": None, "service_type": None, "doctor": None}
-    
-    def _get_stored_appointment_info(self, appointment_id: str) -> Optional[Dict[str, str]]:
-        """Get stored appointment info from database table"""
-        try:
-            import sqlite3
-            from pathlib import Path
-            
-            db_path = Path(__file__).parent.parent / "cache.db"
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT patient_name, patient_phone FROM appointments 
-                WHERE appointment_id = ?
-            ''', (appointment_id,))
-            
-            result = cursor.fetchone()
-            conn.close()
-            
-            if result:
-                return {
-                    "patient_name": result[0],
-                    "patient_phone": result[1]
-                }
-            return None
-        except Exception as e:
-            print(f"Error getting stored appointment info: {e}")
-            return None
     
     def log_interaction(
         self,
@@ -345,6 +327,13 @@ class PatientInteractionLogger:
         successful_calls = sum(1 for i in interactions if i.get('success', False))
         success_rate = (successful_calls / total_calls * 100) if total_calls > 0 else 0
         
+        # Count new bookings (successful booking interactions)
+        new_bookings = sum(1 for i in interactions 
+                          if i.get('interaction_type') == 'booking' and i.get('success', False))
+        
+        # Calculate minimum estimated revenue (new bookings * $110)
+        min_est_revenue = new_bookings * 110
+        
         # Count by interaction type
         type_counts = {}
         successful_by_type = {}
@@ -378,6 +367,8 @@ class PatientInteractionLogger:
             "successful_calls": successful_calls,
             "failed_calls": total_calls - successful_calls,
             "success_rate": round(success_rate, 2),
+            "new_bookings": new_bookings,
+            "min_est_revenue": min_est_revenue,
             "type_counts": type_counts,
             "type_success_rates": {k: round(v, 2) for k, v in type_success_rates.items()},
             "peak_hour": peak_hour[0] if peak_hour[1] > 0 else None,
@@ -515,12 +506,17 @@ class PatientInteractionLogger:
             padding: 15px 20px;
             border-bottom: 1px solid #f0f0f0;
             display: grid;
-            grid-template-columns: 1fr 150px 100px;
+            grid-template-columns: 50px 1fr 150px;
             gap: 15px;
             align-items: center;
         }}
         .interaction-item:last-child {{
             border-bottom: none;
+        }}
+        .interaction-number {{
+            font-weight: bold;
+            color: #667eea;
+            font-size: 1.1em;
         }}
         .interaction-info h4 {{
             margin: 0 0 5px 0;
@@ -535,21 +531,6 @@ class PatientInteractionLogger:
             color: #666;
             font-size: 0.9em;
         }}
-        .status-badge {{
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 0.8em;
-            font-weight: 600;
-            text-align: center;
-        }}
-        .status-success {{
-            background: #d4edda;
-            color: #155724;
-        }}
-        .status-failed {{
-            background: #f8d7da;
-            color: #721c24;
-        }}
         .footer {{
             background: #f8f9fc;
             padding: 20px;
@@ -563,13 +544,6 @@ class PatientInteractionLogger:
             font-style: italic;
             padding: 20px;
         }}
-        .success-rate {{
-            font-size: 1.1em;
-            margin-top: 5px;
-        }}
-        .success-high {{ color: #28a745; }}
-        .success-medium {{ color: #ffc107; }}
-        .success-low {{ color: #dc3545; }}
     </style>
 </head>
 <body>
@@ -588,16 +562,12 @@ class PatientInteractionLogger:
                         <div class="stat-label">Total Calls</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">{stats['successful_calls']}</div>
-                        <div class="stat-label">Successful</div>
+                        <div class="stat-number">{stats['new_bookings']}</div>
+                        <div class="stat-label">New Bookings</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">{stats['failed_calls']}</div>
-                        <div class="stat-label">Failed</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{stats['success_rate']}%</div>
-                        <div class="stat-label">Success Rate</div>
+                        <div class="stat-number">${stats['min_est_revenue']}</div>
+                        <div class="stat-label">Min. Est. Revenue Booked</div>
                     </div>
         """
         
@@ -637,10 +607,6 @@ class PatientInteractionLogger:
             if not interactions:
                 continue
                 
-            success_count = sum(1 for i in interactions if i.get('success', False))
-            success_rate = (success_count / len(interactions) * 100) if interactions else 0
-            success_class = "success-high" if success_rate >= 80 else "success-medium" if success_rate >= 60 else "success-low"
-            
             html += f"""
                 <div class="interaction-category">
                     <div class="category-header">
@@ -653,7 +619,7 @@ class PatientInteractionLogger:
             if self.config["reporting"]["include_patient_details"]:
                 html += '<div class="interaction-list">'
                 
-                for interaction in interactions[-10:]:  # Show last 10 interactions
+                for index, interaction in enumerate(interactions[-10:], 1):  # Show last 10 interactions with numbering
                     timestamp = datetime.fromisoformat(interaction['timestamp'])
                     time_str = timestamp.strftime("%I:%M %p")
                     
@@ -663,22 +629,16 @@ class PatientInteractionLogger:
                     if interaction.get('doctor'):
                         patient_info += f" with {interaction['doctor']}"
                     
-                    status_class = "status-success" if interaction.get('success', False) else "status-failed"
-                    status_text = "Success" if interaction.get('success', False) else "Failed"
-                    
-                    error_info = ""
-                    if not interaction.get('success', False) and interaction.get('error_message'):
-                        error_info = f"<p>Error: {interaction['error_message'][:100]}...</p>"
+                    contact_info = interaction.get('contact_number', 'N/A')
                     
                     html += f"""
                         <div class="interaction-item">
+                            <div class="interaction-number">{index}</div>
                             <div class="interaction-info">
                                 <h4>{patient_info}</h4>
-                                <p>Contact: {interaction.get('contact_number', 'N/A')}</p>
-                                {error_info}
+                                <p>Contact: {contact_info}</p>
                             </div>
                             <div class="interaction-time">{time_str}</div>
-                            <div class="status-badge {status_class}">{status_text}</div>
                         </div>
                     """
                 

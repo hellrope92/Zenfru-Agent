@@ -322,19 +322,47 @@ class LocalCacheService:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # First try the appointments table
         cursor.execute('''
             SELECT data, last_updated FROM appointments 
             WHERE appointment_id = ?
         ''', (appointment_id,))
         
         result = cursor.fetchone()
-        conn.close()
         
         if result:
-            # Check if data is still fresh (24 hours)
+            # Check if data is still fresh (extend to 7 days for development)
             last_updated = datetime.fromisoformat(result[1])
-            if datetime.now() - last_updated < timedelta(hours=24):
+            if datetime.now() - last_updated < timedelta(days=7):
+                conn.close()
                 return json.loads(result[0])
+        
+        # If not found in appointments table, search in schedules table
+        cursor.execute('''
+            SELECT data, last_updated FROM schedules 
+            ORDER BY last_updated DESC
+        ''')
+        
+        schedule_results = cursor.fetchall()
+        conn.close()
+        
+        # Search through schedule data for the appointment
+        for schedule_result in schedule_results:
+            # Check if data is still fresh (extend to 7 days for development)
+            last_updated = datetime.fromisoformat(schedule_result[1])
+            if datetime.now() - last_updated < timedelta(days=7):
+                try:
+                    schedule_data = json.loads(schedule_result[0])
+                    appointments = schedule_data.get("appointments", [])
+                    
+                    # Search for the appointment by ID
+                    for appointment in appointments:
+                        if appointment.get("name") == appointment_id or appointment.get("remote_id") == appointment_id.replace("appointments/", ""):
+                            print(f"📋 Found appointment {appointment_id} in schedules data")
+                            return appointment
+                            
+                except json.JSONDecodeError:
+                    continue
         
         return None
 
