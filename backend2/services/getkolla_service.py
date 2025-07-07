@@ -23,8 +23,8 @@ class GetKollaService:
         self.headers = {
             "accept": "application/json",
             "authorization": f"Bearer {os.getenv('KOLLA_BEARER_TOKEN')}",
-            "connector-id": os.getenv("KOLLA_CONNECTOR_ID", "opendental"),
-            "consumer-id": os.getenv("KOLLA_CONSUMER_ID", "kolla-opendental-sandbox")
+            "connector-id": os.getenv("KOLLA_CONNECTOR_ID", "eaglesoft"),
+            "consumer-id": os.getenv("KOLLA_CONSUMER_ID", "dajc")
         }
           # Load schedule configuration
         self.schedule_file = Path(__file__).parent.parent.parent / "schedule.json"
