@@ -1,13 +1,68 @@
 {
-  "Sunday": { "open": "9:00 AM", "close": "4:00 PM", "doctor": "Dr. Yuzvyak" },
-  "Monday": { "open": "9:00 AM", "close": "6:00 PM", "doctor": "Dr. Hanna" },
-  "Tuesday": { "status": "Closed" },
+  "Sunday": { 
+    "open": "9:00 AM", 
+    "close": "4:00 PM", 
+    "doctor": "Dr. Yuzvyak",
+    "hygienists": []
+  },
+  "Monday": { 
+    "open": "9:00 AM", 
+    "close": "6:00 PM", 
+    "doctor": "Dr. Hanna",
+    "hygienists": [
+      {
+        "name": "Nadia Khan",
+        "provider_id": "H20",
+        "open": "9:00 AM",
+        "close": "6:00 PM",
+        "lunch_start": "1:00 PM",
+        "lunch_end": "2:00 PM",
+        "slot_duration": 60
+      }
+    ]
+  },
+  "Tuesday": {
+    "closed": true
+  },
   "Wednesday": {
     "open": "9:00 AM",
     "close": "5:00 PM",
-    "doctor": "Dr. Parmar"
+    "doctor": "Dr. Parmar",
+    "hygienists": []
   },
-  "Thursday": { "open": "9:00 AM", "close": "6:00 PM", "doctor": "Dr. Hanna" },
-  "Friday": { "status": "Closed" },
-  "Saturday": { "open": "9:00 AM", "close": "4:00 PM", "doctor": "Dr. Lee" }
+  "Thursday": { 
+    "open": "9:00 AM", 
+    "close": "6:00 PM", 
+    "doctor": "Dr. Hanna",
+    "hygienists": [
+      {
+        "name": "Imelda Soledad",
+        "provider_id": "6",
+        "open": "9:00 AM",
+        "close": "6:00 PM",
+        "lunch_start": "1:00 PM",
+        "lunch_end": "2:00 PM",
+        "slot_duration": 60
+      }
+    ]
+  },
+  "Friday": {
+    "closed": true
+  },
+  "Saturday": { 
+    "open": "9:00 AM", 
+    "close": "4:00 PM", 
+    "doctor": "Dr. Lee",
+    "hygienists": [
+      {
+        "name": "Nadia Khan",
+        "provider_id": "H20",
+        "open": "9:00 AM",
+        "close": "4:00 PM",
+        "lunch_start": null,
+        "lunch_end": null,
+        "slot_duration": 60
+      }
+    ]
+  }
 }
