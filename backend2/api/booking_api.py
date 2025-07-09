@@ -103,23 +103,27 @@ def create_kolla_contact(contact_info: dict) -> Optional[str]:
     if 'type' not in payload:
         payload['type'] = 'PATIENT'
     
-    # Only set first_visit if it's not already provided and is valid
-    if 'first_visit' not in payload:
-        payload['first_visit'] = datetime.now().strftime("%Y-%m-%d")
-    else:
-        # Validate and fix first_visit format if it's invalid
-        try:
-            datetime.strptime(payload['first_visit'], "%Y-%m-%d")
-        except ValueError:
-            # If invalid date format, use current date
-            payload['first_visit'] = datetime.now().strftime("%Y-%m-%d")
+    # Remove first_visit for now as it might be causing issues
+    payload.pop('first_visit', None)
     
     print(f"Creating contact with payload: {json.dumps(payload, indent=2)}")
-    response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(payload))
-    print(f"Contact creation response: {response.status_code}, {response.text}")
-    if response.status_code in (200, 201):
-        return response.json().get('name')
-    return None
+    
+    try:
+        response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(payload), timeout=30)
+        print(f"Contact creation response: {response.status_code}, {response.text}")
+        
+        if response.status_code in (200, 201):
+            return response.json().get('name')
+        else:
+            print(f"Contact creation failed with status {response.status_code}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print("Contact creation timed out")
+        return None
+    except Exception as e:
+        print(f"Error creating contact: {e}")
+        return None
 
 def get_kolla_resources():
     """Fetch all resources from Kolla and return as a list."""
@@ -273,8 +277,9 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             contact_info['state'] = 'ACTIVE'
         if 'type' not in contact_info:
             contact_info['type'] = 'PATIENT'
-        if 'first_visit' not in contact_info:
-            contact_info['first_visit'] = request.date
+        
+        # Remove first_visit as it can cause timeout issues
+        contact_info.pop('first_visit', None)
 
         # Remove problematic fields that shouldn't be sent during creation
         problematic_fields = ['guarantor', 'preferred_provider']

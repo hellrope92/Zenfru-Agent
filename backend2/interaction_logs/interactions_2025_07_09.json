@@ -40,5 +40,26 @@
       "day": "Tuesday",
       "contact_id": "contacts/10001"
     }
+  },
+  {
+    "interaction_id": "8bb209f8-bf9f-4c28-ad09-733ffa86b4fc",
+    "timestamp": "2025-07-09T22:33:57.546385",
+    "date": "2025-07-09",
+    "time": "22:33:57.546385",
+    "interaction_type": "booking",
+    "patient_name": "Jack Reacher",
+    "contact_number": "******4231",
+    "success": true,
+    "appointment_id": "appointments/92486",
+    "service_type": "Routine Check-up",
+    "doctor": "Hygienist, Default",
+    "error_message": null,
+    "details": {
+      "date": "2024-07-15",
+      "time": "09:00",
+      "is_new_patient": true,
+      "day": "Monday",
+      "contact_id": "contacts/10004"
+    }
   }
 ]
