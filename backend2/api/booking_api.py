@@ -5,9 +5,14 @@ Handles appointment booking, rescheduling, and booking management
 import json
 import uuid
 import requests
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Union
 from fastapi import APIRouter, HTTPException
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Import shared models
 from .models import BookAppointmentRequest, RescheduleRequest, ContactInfo
@@ -18,14 +23,25 @@ from services.patient_interaction_logger import patient_logger
 
 router = APIRouter(prefix="/api", tags=["booking"])
 
-KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
+# Load configuration from environment variables
+KOLLA_BASE_URL = os.getenv('KOLLA_BASE_URL', 'https://unify.kolla.dev/dental/v1')
+KOLLA_BEARER_TOKEN = os.getenv('KOLLA_BEARER_TOKEN', '')
+KOLLA_CONNECTOR_ID = os.getenv('KOLLA_CONNECTOR_ID', 'eaglesoft')
+KOLLA_CONSUMER_ID = os.getenv('KOLLA_CONSUMER_ID', 'dajc')
+
 KOLLA_HEADERS = {
-    'connector-id': 'opendental',
-    'consumer-id': 'kolla-opendental-sandbox',
+    'connector-id': KOLLA_CONNECTOR_ID,
+    'consumer-id': KOLLA_CONSUMER_ID,
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'Authorization': 'Bearer kc.hd4iscieh5emlk75rsjuowweya'
+    'Authorization': f'Bearer {KOLLA_BEARER_TOKEN}'
 }
+
+print(f"🔧 Booking API Configuration:")
+print(f"   Base URL: {KOLLA_BASE_URL}")
+print(f"   Connector ID: {KOLLA_CONNECTOR_ID}")
+print(f"   Consumer ID: {KOLLA_CONSUMER_ID}")
+print(f"   Bearer Token: {KOLLA_BEARER_TOKEN[:20]}...")
 
 KOLLA_RESOURCES_URL = f"{KOLLA_BASE_URL}/resources"
 
@@ -67,46 +83,6 @@ def convert_time_to_datetime(date_str: str, time_str: str) -> datetime:
         print(f"Error converting time: {e}")
         # Return a default datetime if parsing fails
         return datetime.now()
-
-def get_kolla_contact_id(contact_info: dict) -> Optional[str]:
-    """Check if contact exists in Kolla by phone number, return contact_id if found, else None."""
-    url = f"{KOLLA_BASE_URL}/contacts"
-    response = requests.get(url, headers=KOLLA_HEADERS)
-    if response.status_code == 200:
-        contacts = response.json().get('contacts', [])
-        
-        # Extract phone number from contact_info
-        phone_to_search = None
-        if contact_info.get('number'):
-            phone_to_search = contact_info['number']
-        elif contact_info.get('phone_numbers') and len(contact_info['phone_numbers']) > 0:
-            phone_to_search = contact_info['phone_numbers'][0].get('number')
-        
-        if not phone_to_search:
-            return None
-        
-        # Normalize the search phone number
-        normalized_search_phone = phone_to_search.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-        
-        # Search through all contacts for matching phone number
-        for contact in contacts:
-            if contact.get("type") == "PATIENT":
-                # Check all phone numbers for this contact
-                phone_numbers = contact.get("phone_numbers", [])
-                primary_phone = contact.get("primary_phone_number", "")
-                
-                # Normalize contact phone numbers for comparison
-                contact_phones = [phone.get("number", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "") 
-                                for phone in phone_numbers]
-                normalized_primary = primary_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-                
-                # Check if any phone number matches
-                if normalized_search_phone in contact_phones or normalized_search_phone == normalized_primary:
-                    print(f"Found existing contact: {contact.get('name')} for phone: {phone_to_search}")
-                    return contact.get('name')  # Return the contact name (like "contacts/13")
-        
-        print(f"No existing contact found for phone: {phone_to_search}")
-    return None
 
 def create_kolla_contact(contact_info: dict) -> Optional[str]:
     """Create a new contact in Kolla, return contact_id if successful."""
@@ -241,7 +217,7 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
         return True
 
 async def book_patient_appointment(request: BookAppointmentRequest, getkolla_service: GetKollaService):
-    """Book a new patient appointment using Kolla API, handling contact lookup/creation."""
+    """Book a new patient appointment using Kolla API, always creating a new contact."""
     print(f"\U0001F4C5 BOOK_PATIENT_APPOINTMENT:")
     print(f"   Name: {request.name}")
     print(f"   Contact: {request.contact}")
@@ -305,20 +281,18 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         for field in problematic_fields:
             contact_info.pop(field, None)
 
-        # 1. Check if contact exists in Kolla
-        contact_id = get_kolla_contact_id(contact_info)
-        # 2. If not, create contact
+        # Since this is always a new patient, create a new contact directly
+        print(f"   Creating new patient contact in Kolla...")
+        contact_id = create_kolla_contact(contact_info)
         if not contact_id:
-            contact_id = create_kolla_contact(contact_info)
-            if not contact_id:
-                return {
-                    "success": False,
-                    "message": "Failed to create or find contact in Kolla.",
-                    "status": "error",
-                    "error": "contact_creation_failed"
-                }
+            return {
+                "success": False,
+                "message": "Failed to create new patient contact in Kolla.",
+                "status": "error",
+                "error": "contact_creation_failed"
+            }
 
-        # 3. Prepare appointment data for Kolla
+        # 2. Prepare appointment data for Kolla
         try:
             start_datetime = convert_time_to_datetime(request.date, request.time)
             service_duration = getkolla_service._get_service_duration(request.service_booked)
@@ -374,7 +348,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "error": "operatory_not_found"
             }
 
-        # 4. Check for existing appointments at the requested time to prevent double booking
+        # 3. Check for existing appointments at the requested time to prevent double booking
         if not await check_time_slot_availability(start_datetime, end_datetime, operatory_resource.get("name")):
             return {
                 "success": False,
@@ -420,13 +394,14 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         elif family_name:
             appointment_data["contact"]["name"] = family_name
         # If no given/family name, keep contact_id as name
-        # 5. Book appointment in Kolla
+        # 4. Book appointment in Kolla
         url = f"{KOLLA_BASE_URL}/appointments"
         response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(appointment_data))
         if response.status_code in (200, 201):
             appointment_id = response.json().get('name', f"APT-{uuid.uuid4().hex[:8].upper()}")
-            print(f"   ✅ Appointment successfully booked through Kolla API!")
+            print(f"   ✅ New patient appointment successfully booked through Kolla API!")
             print(f"   📋 Appointment ID: {appointment_id}")
+            print(f"   👤 Contact ID: {contact_id}")
             
             # Log successful booking interaction
             patient_logger.log_interaction(
@@ -440,15 +415,17 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 details={
                     "date": request.date,
                     "time": request.time,
-                    "is_new_patient": request.is_new_patient,
-                    "day": request.day
+                    "is_new_patient": True,  # Always true for booking
+                    "day": request.day,
+                    "contact_id": contact_id
                 }
             )
             
             return {
                 "success": True,
                 "appointment_id": appointment_id,
-                "message": f"Appointment successfully booked for {request.name}",
+                "contact_id": contact_id,
+                "message": f"New patient appointment successfully booked for {request.name}",
                 "status": "confirmed",
                 "appointment_details": {
                     "name": request.name,
@@ -456,7 +433,9 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     "time": request.time,
                     "service": request.service_booked,
                     "doctor": request.doctor_for_appointment,
-                    "duration_minutes": service_duration
+                    "duration_minutes": service_duration,
+                    "contact_id": contact_id,
+                    "is_new_patient": True
                 }
             }
         else:
@@ -474,7 +453,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 details={
                     "date": request.date,
                     "time": request.time,
-                    "is_new_patient": request.is_new_patient,
+                    "is_new_patient": True,  # Always true for booking
                     "day": request.day,
                     "status_code": response.status_code
                 }
@@ -501,7 +480,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             details={
                 "date": request.date,
                 "time": request.time,
-                "is_new_patient": request.is_new_patient,
+                "is_new_patient": True,  # Always true for booking
                 "day": request.day,
                 "error_type": "exception"
             }

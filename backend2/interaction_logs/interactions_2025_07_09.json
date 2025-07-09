@@ -1,0 +1,44 @@
+[
+  {
+    "interaction_id": "ef2e2323-e07e-48a4-b6b9-dcc33bf4a793",
+    "timestamp": "2025-07-09T21:42:41.170509",
+    "date": "2025-07-09",
+    "time": "21:42:41.170509",
+    "interaction_type": "booking",
+    "patient_name": "John Doe",
+    "contact_number": "****1234",
+    "success": true,
+    "appointment_id": "appointments/29",
+    "service_type": "Cleaning",
+    "doctor": "Dr. Smith",
+    "error_message": null,
+    "details": {
+      "date": "2025-07-14",
+      "time": "10:00 AM",
+      "is_new_patient": true,
+      "day": "Monday",
+      "contact_id": "contacts/17"
+    }
+  },
+  {
+    "interaction_id": "fe41d4ea-88c3-410f-87f4-bde256319701",
+    "timestamp": "2025-07-09T21:47:43.481706",
+    "date": "2025-07-09",
+    "time": "21:47:43.481706",
+    "interaction_type": "booking",
+    "patient_name": "Jane Smith",
+    "contact_number": "****9999",
+    "success": true,
+    "appointment_id": "appointments/92485",
+    "service_type": "Exam",
+    "doctor": "Dr. Johnson",
+    "error_message": null,
+    "details": {
+      "date": "2025-07-15",
+      "time": "2:00 PM",
+      "is_new_patient": true,
+      "day": "Tuesday",
+      "contact_id": "contacts/10001"
+    }
+  }
+]

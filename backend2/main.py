@@ -122,12 +122,14 @@ def create_schedule_endpoints():
     """Create schedule endpoints with proper dependency injection"""
     
     @app.get("/api/availability", tags=["schedule"])
-    async def get_availability(
-        date: str,
-        getkolla_service: GetKollaService = Depends(get_getkolla_service)
-    ):
+    async def get_availability(date: str):
         """Simple availability API - takes a date, returns 3 days of availability"""
-        return await schedule_api.get_availability(date, getkolla_service)
+        return await schedule_api.get_availability(date)
+    
+    @app.get("/api/debug/appointments", tags=["debug"])
+    async def debug_appointments(date: str):
+        """Debug endpoint to show raw appointment data"""
+        return await schedule_api.debug_appointments(date)
 
 def create_booking_endpoints():
     """Create booking endpoints with proper dependency injection"""
