@@ -280,14 +280,25 @@ async def list_log_files():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing log files: {str(e)}")
 
-# Set up default email config for production
+import os
+
+# Load config from environment variables
+EMAIL_USERNAME = os.getenv("EMAIL_USERNAME")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+EMAIL_RECIPIENTS = os.getenv("EMAIL_RECIPIENTS")
+EMAIL_SMTP_SERVER = os.getenv("EMAIL_SMTP_SERVER")
+EMAIL_SMTP_PORT = os.getenv("EMAIL_SMTP_PORT")
+
+# Parse recipients from comma-separated string
+recipients_list = [r.strip() for r in EMAIL_RECIPIENTS.split(",") if r.strip()] if EMAIL_RECIPIENTS else []
+
 patient_logger.update_config({
     "email": {
-        "username": "kay@zenfru.com",
-        "password": "lmep clnw bond khwr",
-        "recipients": ["karanissar@gmail.com", "monilmehta5@gmail.com"],
-        "smtp_server": "smtp.gmail.com",
-        "smtp_port": 587
+        "username": EMAIL_USERNAME,
+        "password": EMAIL_PASSWORD,
+        "recipients": recipients_list,
+        "smtp_server": EMAIL_SMTP_SERVER,
+        "smtp_port": int(EMAIL_SMTP_PORT) if EMAIL_SMTP_PORT else 587
     },
     "reporting": {
         "daily_email_time": "08:00",  # US morning
