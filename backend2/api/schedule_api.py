@@ -116,13 +116,23 @@ def filter_appointments_by_provider(appointments, provider_ids):
     """Filter appointments to only include specified provider IDs"""
     if not provider_ids:
         return []
-    
+
     filtered_appointments = []
     for apt in appointments:
+        # Check top-level provider_id
         apt_provider_id = apt.get("provider_id", "")
-        if apt_provider_id in provider_ids:
+        if apt_provider_id and apt_provider_id in provider_ids:
             filtered_appointments.append(apt)
-    
+            continue
+
+        # Check providers list (for Kolla API format)
+        providers_list = apt.get("providers", [])
+        for provider in providers_list:
+            provider_remote_id = provider.get("remote_id", "")
+            if provider_remote_id in provider_ids:
+                filtered_appointments.append(apt)
+                break
+
     return filtered_appointments
 
 def generate_time_slots(open_time, close_time, slot_duration=30, lunch_start=None, lunch_end=None):

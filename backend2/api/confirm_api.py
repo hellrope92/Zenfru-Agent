@@ -149,7 +149,7 @@ class ConfirmRequest(BaseModel):
     name: Optional[str] = None
     dob: Optional[str] = None  # Date of birth
     confirmed: bool = True
-    confirmation_type: Optional[str] = "confirmationTypes/0"  # Fixed: valid confirmation type
+    confirmation_type: Optional[str] = "confirmationTypes/1"  # Fixed: valid confirmation type based on Kolla docs
     notes: Optional[str] = None
 
 class ConfirmByPhoneRequest(BaseModel):
@@ -157,7 +157,7 @@ class ConfirmByPhoneRequest(BaseModel):
     name: Optional[str] = None
     dob: Optional[str] = None  # Date of birth
     confirmed: bool = True
-    confirmation_type: Optional[str] = "confirmationTypes/0"
+    confirmation_type: Optional[str] = "confirmationTypes/1"
     notes: Optional[str] = None
 
 @router.post("/confirm_by_phone", status_code=200)
@@ -219,16 +219,57 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
     """Confirm an appointment using Kolla API with proper format."""
     try:
         logger.info(f"Confirm appointment endpoint called for {request.appointment_id}")
+
+        # Ensure appointment_id is in correct format (strip 'appointments/' if present)
+        apt_id = request.appointment_id
+        if apt_id.startswith("appointments/"):
+            apt_id = apt_id.split("/", 1)[1]
+
+        # Fetch appointment details to verify existence
+        details_url = f"{KOLLA_BASE_URL}/appointments/{apt_id}"
+        details_response = requests.get(details_url, headers=KOLLA_HEADERS, timeout=10)
+        logger.info(f"   Fetching appointment details: {details_url}")
+        logger.debug(f"   Details response {details_response.status_code}: {details_response.text}")
+
+        appointment_data = None
+        if details_response.status_code == 200:
+            try:
+                appointment_data = details_response.json()
+            except Exception as e:
+                logger.warning(f"⚠️ Could not parse appointment details JSON: {e}")
+                appointment_data = None
+
+        expected_name = f"appointments/{apt_id}"
+        if not appointment_data or appointment_data.get("name") != expected_name:
+            logger.warning(f"⚠️ No valid appointment details found for ID: {apt_id}")
+            patient_logger.log_interaction(
+                interaction_type="confirmation",
+                success=False,
+                appointment_id=request.appointment_id,
+                error_message="Appointment not found or invalid data",
+                details={
+                    "confirmed": request.confirmed,
+                    "confirmation_type": request.confirmation_type,
+                    "notes": request.notes,
+                    "patient_dob": request.dob,
+                    "api_method": "kolla_filter_based"
+                }
+            )
+            raise HTTPException(status_code=404, detail=f"Appointment {apt_id} not found or invalid.")
         
-        url = f"{KOLLA_BASE_URL}/appointments/{request.appointment_id}:confirm"
-        
+        logger.info("✅ Appointment validation passed - proceeding with confirmation")
+
+        url = f"{KOLLA_BASE_URL}/appointments/{apt_id}:confirm"
+
         # Prepare the payload in the format expected by Kolla API
+        # Kolla expects 'name' as 'appointments/{id}'
+        kolla_name = f"appointments/{apt_id}"
         payload = {
-            "name": request.appointment_id,  # Use appointment_id as the name field
+            "name": kolla_name,
             "confirmed": request.confirmed,
             "confirmation_type": request.confirmation_type
         }
-        
+
         # Add notes if provided
         if request.notes:
             payload["notes"] = request.notes
@@ -244,19 +285,59 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
         logger.debug(f"Kolla API response {response.status_code}: {response.text}")
         
         if response.status_code in (200, 204):
-            logger.info("Appointment confirmed successfully")
+            logger.info("✅ Appointment confirmed successfully")
             
-            # Log successful confirmation interaction
+            # Verify confirmation by fetching the appointment again
+            verify_response = requests.get(details_url, headers=KOLLA_HEADERS, timeout=10)
+            
+            actual_confirmed_status = False
+            if verify_response.status_code == 200:
+                try:
+                    verify_data = verify_response.json()
+                    actual_confirmed_status = verify_data.get("confirmed", False)
+                    if actual_confirmed_status:
+                        logger.info("✅ Confirmation verified successfully")
+                    else:
+                        logger.warning("⚠️ Confirmation API succeeded but appointment status not updated")
+                except Exception as e:
+                    logger.warning(f"Could not verify confirmation: {e}")
+            
+            # Extract patient details from the appointment data we already fetched
+            contact_info = appointment_data.get("contact", {})
+            patient_name = f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip()
+            if not patient_name:
+                patient_name = request.name
+            
+            service_type = appointment_data.get("short_description") or appointment_data.get("service_type")
+            
+            # Get doctor from providers
+            doctor = None
+            providers = appointment_data.get("providers", [])
+            if providers:
+                doctor = providers[0].get("display_name") or providers[0].get("name")
+                
+            # Get doctor from resources if not found in providers
+            if not doctor:
+                resources = appointment_data.get("resources", [])
+                for resource in resources:
+                    if resource.get("type") == "operatory":
+                        doctor = resource.get("display_name")
+                        break
             patient_logger.log_interaction(
                 interaction_type="confirmation",
                 success=True,
                 appointment_id=request.appointment_id,
+                patient_name=patient_name,
+                service_type=service_type,
+                doctor=doctor,
                 details={
                     "confirmed": request.confirmed,
                     "confirmation_type": request.confirmation_type,
                     "notes": request.notes,
                     "patient_dob": request.dob,
-                    "api_method": "kolla_filter_based"
+                    "api_method": "kolla_filter_based",
+                    "api_response_status": response.status_code,
+                    "confirmation_verified": actual_confirmed_status
                 }
             )
             
@@ -297,6 +378,8 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 "appointment_id": request.appointment_id,
                 "status": "failed"
             }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Error in confirm_appointment_endpoint", exc_info=True)
         

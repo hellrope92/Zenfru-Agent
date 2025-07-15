@@ -1,19 +1,17 @@
 {
   "email": {
+    "username": "kay@zenfru.com",
+    "password": "lmep clnw bond khwr",
+    "recipients": [
+      "monilmehta5@gmail.com",
+      "karanissar@gmail.com"
+    ],
     "smtp_server": "smtp.gmail.com",
-    "smtp_port": 587,
-    "use_tls": true,
-    "username": "",
-    "password": "",
-    "recipients": [],
-    "sender_name": "BrightSmile Dental AI Assistant"
+    "smtp_port": 587
   },
   "reporting": {
-    "daily_email_time": "17:00",
-    "timezone": "UTC",
-    "include_patient_details": true,
-    "include_statistics": true,
-    "max_retries": 3
+    "daily_email_time": "08:00",
+    "include_patient_details": true
   },
   "fallback": {
     "backup_email": "",
