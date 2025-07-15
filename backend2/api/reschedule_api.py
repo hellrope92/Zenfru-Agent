@@ -1,105 +1,147 @@
 import json
 import requests
+import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from dotenv import load_dotenv
 from .models import RescheduleRequest
 from services.patient_interaction_logger import patient_logger
 
-KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
-KOLLA_HEADERS = {
-    'connector-id': 'opendental',
-    'consumer-id': 'kolla-opendental-sandbox',
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'Authorization': 'Bearer kc.hd4iscieh5emlk75rsjuowweya'
-}
+# Load environment variables
+load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["reschedule"])
 
+# Kolla API configuration
+KOLLA_BASE_URL = os.getenv("KOLLA_BASE_URL", "https://unify.kolla.dev/dental/v1")
+KOLLA_HEADERS = {
+    "accept": "application/json",
+    "authorization": f"Bearer {os.getenv('KOLLA_BEARER_TOKEN')}",
+    "connector-id": os.getenv("KOLLA_CONNECTOR_ID", "eaglesoft"),
+    "consumer-id": os.getenv("KOLLA_CONSUMER_ID", "dajc")
+}
+
+async def get_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
+    """Fetch contact information from Kolla API using phone filter"""
+    try:
+        contacts_url = f"{KOLLA_BASE_URL}/contacts"
+        
+        # Build filter for phone number search
+        # Phone number is already normalized (e.g., "5551234567")
+        filter_query = f"type='PATIENT' AND state='ACTIVE' AND phone='{patient_phone}'"
+        
+        params = {"filter": filter_query}
+        
+        print(f"📞 Calling Kolla API: {contacts_url}")
+        print(f"   Filter: {filter_query}")
+        print(f"   Normalized phone: {patient_phone}")
+        
+        response = requests.get(contacts_url, headers=KOLLA_HEADERS, params=params, timeout=10)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ API Error: {response.text}")
+            return None
+            
+        contacts_data = response.json()
+        contacts = contacts_data.get("contacts", [])
+        
+        print(f"   ✅ Found {len(contacts)} contacts matching phone filter")
+        
+        if contacts:
+            # Return the first matching contact
+            contact = contacts[0]
+            print(f"   📋 Contact: {contact.get('given_name', '')} {contact.get('family_name', '')}")
+            return contact
+        
+        print(f"   ⚠️ No contact found for phone: {patient_phone}")
+        return None
+        
+    except Exception as e:
+        print(f"   ❌ Error fetching contact by phone filter: {e}")
+        return None
+
+async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, Any]]:
+    """Get appointments for a specific contact using appointments filter"""
+    try:
+        appointments_url = f"{KOLLA_BASE_URL}/appointments"
+        
+        # Build filter for contact-specific appointments
+        filter_query = f"contact_id='{contact_id}' AND state='SCHEDULED'"
+        
+        params = {"filter": filter_query}
+        
+        print(f"📅 Calling Kolla API: {appointments_url}")
+        print(f"   Filter: {filter_query}")
+        
+        response = requests.get(appointments_url, headers=KOLLA_HEADERS, params=params, timeout=10)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ API Error: {response.text}")
+            return []
+            
+        appointments_data = response.json()
+        appointments = appointments_data.get("appointments", [])
+        
+        print(f"   ✅ Found {len(appointments)} appointments for contact: {contact_id}")
+        
+        # Sort by start_time descending to get latest appointments first
+        if appointments:
+            appointments.sort(key=lambda x: x.get("start_time", ""), reverse=True)
+        
+        return appointments
+        
+    except Exception as e:
+        print(f"   ❌ Error fetching appointments by contact filter: {e}")
+        return []
+
 async def find_appointment_by_phone(phone_number: str) -> Optional[str]:
     """
-    Find the latest appointment for a patient by phone number.
+    Find the latest appointment for a patient by phone number using Kolla API filters.
     Returns appointment_id if found, None otherwise.
     """
     try:
-        # Normalize phone number
+        # Normalize phone number to standard format (e.g., "5551234567")
         normalized_phone = phone_number.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         
-        # Step 1: Search for contacts by phone number
-        contacts_url = f"{KOLLA_BASE_URL}/contacts"
-        contacts_response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
+        print(f"🔍 Finding appointment for phone: {phone_number} (normalized: {normalized_phone})")
         
-        if contacts_response.status_code != 200:
-            print(f"Error searching for contacts: {contacts_response.status_code}")
-            return None
-            
-        contacts_data = contacts_response.json()
+        # Step 1: Find contact by phone using filter
+        contact_info = await get_contact_by_phone_filter(normalized_phone)
         
-        # Step 2: Find contact with matching phone number
-        matching_contact = None
-        for contact in contacts_data.get("contacts", []):
-            if contact.get("type") == "PATIENT":
-                # Check all phone numbers for this contact
-                phone_numbers = contact.get("phone_numbers", [])
-                primary_phone = contact.get("primary_phone_number", "")
-                
-                # Normalize contact phone numbers for comparison
-                contact_phones = [phone.get("number", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "") 
-                                for phone in phone_numbers]
-                normalized_primary = primary_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-                
-                if normalized_phone in contact_phones or normalized_phone == normalized_primary:
-                    matching_contact = contact
-                    break
-        
-        if not matching_contact:
-            print(f"No patient found with phone number: {phone_number}")
-            return None
-            
-        # Step 3: Get contact_id
-        contact_remote_id = matching_contact.get("remote_id")
-        contact_name = matching_contact.get("name")  # Like "contacts/13"
-        
-        print(f"Found matching contact: {contact_name} with remote_id: {contact_remote_id}")
-        
-        # Step 4: Fetch all appointments and filter by contact_id
-        appointments_url = f"{KOLLA_BASE_URL}/appointments"
-        appointments_response = requests.get(appointments_url, headers=KOLLA_HEADERS, timeout=10)
-        
-        if appointments_response.status_code != 200:
-            print(f"Error fetching appointments: {appointments_response.status_code}")
-            return None
-            
-        appointments_data = appointments_response.json()
-        all_appointments = appointments_data.get("appointments", [])
-        
-        # Step 5: Filter appointments by contact_id
-        patient_appointments = []
-        for appointment in all_appointments:
-            appointment_contact_id = appointment.get("contact_id")
-            
-            # Match either by contact name or remote_id
-            if (appointment_contact_id == contact_name or 
-                appointment_contact_id == f"contacts/{contact_remote_id}"):
-                patient_appointments.append(appointment)
-        
-        if not patient_appointments:
-            print(f"No appointments found for contact_id: {contact_name}")
+        if not contact_info:
+            print(f"   ⚠️ No contact found for phone: {normalized_phone}")
             return None
         
-        # Step 6: Sort appointments by start_time to get the latest one
-        patient_appointments.sort(key=lambda x: x.get("start_time", ""), reverse=True)
-        latest_appointment = patient_appointments[0]
+        # Step 2: Get contact_id for appointments filter
+        contact_id = contact_info.get("name")  # This is usually like "contacts/123"
         
+        if not contact_id:
+            print(f"   ⚠️ No contact ID found for contact")
+            return None
+        
+        print(f"   📋 Found contact: {contact_info.get('given_name', '')} {contact_info.get('family_name', '')} ({contact_id})")
+        
+        # Step 3: Get appointments for this contact using filter
+        appointments = await get_appointments_by_contact_filter(contact_id)
+        
+        if not appointments:
+            print(f"   ⚠️ No appointments found for contact: {contact_id}")
+            return None
+        
+        # Step 4: Get the latest appointment (already sorted by start_time desc)
+        latest_appointment = appointments[0]
         appointment_id = latest_appointment.get("name")  # This is the appointment ID
-        print(f"Found latest appointment: {appointment_id} for phone: {phone_number}")
+        
+        print(f"   ✅ Found latest appointment: {appointment_id}")
         
         return appointment_id
         
     except Exception as e:
-        print(f"Error finding appointment by phone: {e}")
+        print(f"   ❌ Error finding appointment by phone: {e}")
         return None
 
 class FlexibleRescheduleRequest(BaseModel):
@@ -108,6 +150,89 @@ class FlexibleRescheduleRequest(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     notes: Optional[str] = None
+
+class RescheduleByPhoneRequest(BaseModel):
+    phone: str
+    date: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    notes: Optional[str] = None
+
+@router.post("/reschedule_by_phone")
+async def reschedule_by_phone(request: RescheduleByPhoneRequest):
+    """
+    Reschedule the latest appointment for a patient using their phone number.
+    This endpoint finds the patient's latest appointment and reschedules it.
+    """
+    try:
+        print(f"🔄 RESCHEDULE_BY_PHONE:")
+        print(f"   Phone: {request.phone}")
+        print(f"   Date: {request.date}")
+        print(f"   Start Time: {request.start_time}")
+        print(f"   End Time: {request.end_time}")
+        print(f"   Notes: {request.notes}")
+        
+        # Normalize phone number
+        normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        
+        # Find the latest appointment for this phone number
+        appointment_id = await find_appointment_by_phone(normalized_phone)
+        
+        if not appointment_id:
+            return {
+                "success": False, 
+                "message": "No appointment found for the provided phone number",
+                "phone": request.phone,
+                "status": "not_found"
+            }
+        
+        # Create a FlexibleRescheduleRequest and delegate to existing function
+        flexible_request = FlexibleRescheduleRequest(
+            appointment_id=appointment_id,
+            date=request.date,
+            start_time=request.start_time,
+            end_time=request.end_time,
+            notes=request.notes
+        )
+        
+        # Call the existing reschedule function
+        result = await reschedule_patient_appointment(flexible_request)
+        
+        # Add phone number to the result for reference
+        if isinstance(result, dict):
+            result["phone"] = request.phone
+            result["normalized_phone"] = normalized_phone
+        
+        return result
+        
+    except Exception as e:
+        print(f"   ❌ Error in reschedule_by_phone: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Log failed rescheduling interaction
+        patient_logger.log_interaction(
+            interaction_type="rescheduling",
+            success=False,
+            phone_number=request.phone,
+            error_message=str(e),
+            details={
+                "date": request.date,
+                "start_time": request.start_time,
+                "end_time": request.end_time,
+                "notes": request.notes,
+                "error_type": "exception",
+                "reschedule_method": "by_phone"
+            }
+        )
+        
+        return {
+            "success": False, 
+            "message": "An error occurred while rescheduling the appointment. Please contact the clinic directly.", 
+            "status": "error", 
+            "error": str(e),
+            "phone": request.phone
+        }
 
 @router.post("/reschedule_patient_appointment")
 async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
@@ -159,13 +284,16 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
 
         url = f"{KOLLA_BASE_URL}/appointments/{appointment_id}"
         print(f"   Sending PATCH to: {url}")
-        response = requests.patch(url, headers=KOLLA_HEADERS, data=json.dumps(patch_data))
+        print(f"   Headers: {KOLLA_HEADERS}")
+        
+        response = requests.patch(url, headers=KOLLA_HEADERS, json=patch_data, timeout=10)
         print(f"   Response status: {response.status_code}")
+        print(f"   Response text: {response.text}")
         
         if response.status_code in (200, 204):
             print(f"   ✅ Success: Appointment rescheduled")
             
-            # Log successful rescheduling interaction - let the logger fetch patient details
+            # Log successful rescheduling interaction
             patient_logger.log_interaction(
                 interaction_type="rescheduling",
                 success=True,
@@ -175,7 +303,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "start_time": request.start_time,
                     "end_time": request.end_time,
                     "notes": request.notes,
-                    "updated_fields": patch_data
+                    "updated_fields": patch_data,
+                    "api_method": "kolla_filter_based"
                 }
             )
             
@@ -183,7 +312,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         else:
             print(f"   ❌ Failed: {response.text}")
             
-            # Log failed rescheduling interaction - let the logger fetch patient details
+            # Log failed rescheduling interaction
             patient_logger.log_interaction(
                 interaction_type="rescheduling",
                 success=False,
@@ -194,7 +323,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "start_time": request.start_time,
                     "end_time": request.end_time,
                     "notes": request.notes,
-                    "status_code": response.status_code
+                    "status_code": response.status_code,
+                    "api_method": "kolla_filter_based"
                 }
             )
             
@@ -207,7 +337,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         print(f"   ❌ Error rescheduling appointment: {str(e)}")
         traceback.print_exc()
         
-        # Log failed rescheduling interaction due to exception - let the logger fetch patient details
+        # Log failed rescheduling interaction due to exception
         patient_logger.log_interaction(
             interaction_type="rescheduling",
             success=False,
@@ -218,7 +348,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "start_time": request.start_time,
                 "end_time": request.end_time,
                 "notes": request.notes,
-                "error_type": "exception"
+                "error_type": "exception",
+                "api_method": "kolla_filter_based"
             }
         )
         

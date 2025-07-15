@@ -1,0 +1,44 @@
+[
+  {
+    "interaction_id": "6775840f-1f53-4941-9315-5db501a523bc",
+    "timestamp": "2025-07-14T17:19:00.265060",
+    "date": "2025-07-14",
+    "time": "17:19:00.265060",
+    "interaction_type": "booking",
+    "patient_name": "Tom Cruise",
+    "contact_number": "******8989",
+    "success": true,
+    "appointment_id": "appointments/92537",
+    "service_type": "Root Canal",
+    "doctor": "Dr. Hanna",
+    "error_message": null,
+    "details": {
+      "date": "2025-07-15",
+      "time": "13:00",
+      "is_new_patient": true,
+      "day": "Tuesday",
+      "contact_id": "contacts/10010"
+    }
+  },
+  {
+    "interaction_id": "2467d154-4790-49a1-b076-6d29c37e0614",
+    "timestamp": "2025-07-14T17:24:04.278392",
+    "date": "2025-07-14",
+    "time": "17:24:04.278392",
+    "interaction_type": "booking",
+    "patient_name": "Matt Damon",
+    "contact_number": "******8980",
+    "success": true,
+    "appointment_id": "appointments/92538",
+    "service_type": "Root Canal",
+    "doctor": "Akshay Parmar",
+    "error_message": null,
+    "details": {
+      "date": "2025-07-18",
+      "time": "11:00",
+      "is_new_patient": true,
+      "day": "Friday",
+      "contact_id": "contacts/10011"
+    }
+  }
+]

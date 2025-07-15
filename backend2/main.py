@@ -122,14 +122,14 @@ def create_schedule_endpoints():
     """Create schedule endpoints with proper dependency injection"""
     
     @app.get("/api/availability", tags=["schedule"])
-    async def get_availability(date: str):
-        """Simple availability API - takes a date, returns 3 days of availability"""
-        return await schedule_api.get_availability(date)
+    async def get_availability(date: str, iscleaning: bool = False):
+        """Enhanced availability API - takes a date and iscleaning flag, returns 3 days of availability"""
+        return await schedule_api.get_availability(date, iscleaning)
     
     @app.get("/api/debug/appointments", tags=["debug"])
-    async def debug_appointments(date: str):
-        """Debug endpoint to show raw appointment data"""
-        return await schedule_api.debug_appointments(date)
+    async def debug_appointments(date: str, iscleaning: bool = False):
+        """Debug endpoint to show raw appointment data with provider filtering"""
+        return await schedule_api.debug_appointments(date, iscleaning)
 
 def create_booking_endpoints():
     """Create booking endpoints with proper dependency injection"""

@@ -1,74 +1,55 @@
 """
 Get Appointment API endpoint
-Retrieves existing appointment information for a patient
+Retrieves existing appointment information for a patient using Kolla API filters
 Parameters: phone (required)
 Used for rescheduling and confirming appointments
-Uses local caching with 24-hour refresh for appointments
+Uses direct Kolla API filtering for efficient appointment lookup
 
 Note: Matching is performed by patient phone number for accurate identification.
 """
 
 import requests
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
+from dotenv import load_dotenv
 
 from api.models import GetAppointmentRequest
-from services.local_cache_service import LocalCacheService
-from services.getkolla_service import GetKollaService
+
+# Load environment variables
+load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["appointments"])
 
-KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
+# Kolla API configuration
+KOLLA_BASE_URL = os.getenv("KOLLA_BASE_URL", "https://unify.kolla.dev/dental/v1")
 KOLLA_HEADERS = {
-    'connector-id': 'opendental',
-    'consumer-id': 'kolla-opendental-sandbox',
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'Authorization': 'Bearer kc.hd4iscieh5emlk75rsjuowweya'
+    "accept": "application/json",
+    "authorization": f"Bearer {os.getenv('KOLLA_BEARER_TOKEN')}",
+    "connector-id": os.getenv("KOLLA_CONNECTOR_ID", "eaglesoft"),
+    "consumer-id": os.getenv("KOLLA_CONSUMER_ID", "dajc")
 }
-
-cache_service = LocalCacheService()
 
 @router.post("/get_appointment")
 async def get_appointment(request: GetAppointmentRequest):
     """
-    Retrieves existing appointment information for a patient
+    Retrieves existing appointment information for a patient using Kolla API filters
     Parameters: phone (required)
     Used for rescheduling and confirming appointments
     Note: Matching is performed by phone number for accurate patient identification.
     """
     try:
         # Print phone number as requested
-        print(f"Fetching appointments for patient phone: {request.phone}")
+        print(f"🔍 Fetching appointments for patient phone: {request.phone}")
         
         # Normalize phone number (remove spaces, dashes, etc.)
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
             
-        # First check local cache (using phone number for matching)
-        cached_appointments = cache_service.get_appointments_by_phone(normalized_phone)
-        
-        if cached_appointments:
-            # Sort cached appointments by start_time to get the latest
-            sorted_appointments = sorted(cached_appointments, key=lambda x: x.get("start_time", ""), reverse=True)
-            latest_appointment = sorted_appointments[0] if sorted_appointments else None
-            
-            return {
-                "success": True,
-                "patient_phone": request.phone,
-                "appointment": latest_appointment,
-                "source": "cache"
-            }
-            
-        # If not in cache or cache is stale, fetch from Kolla API
-        appointments = await fetch_appointments_from_kolla(normalized_phone)
+        # Use Kolla API to get appointments for this phone number
+        appointments = await fetch_appointments_by_phone_filter(normalized_phone)
         
         if appointments:
-            # Store in cache
-            for appointment in appointments:
-                appointment["patient_phone"] = normalized_phone
-                cache_service.store_appointment(appointment)
-            
             # Get the latest appointment (first one since they're sorted by start_time desc)
             latest_appointment = appointments[0] if appointments else None
             
@@ -76,7 +57,8 @@ async def get_appointment(request: GetAppointmentRequest):
                 "success": True,
                 "patient_phone": request.phone,
                 "appointment": latest_appointment,
-                "source": "api"
+                "total_appointments": len(appointments),
+                "source": "kolla_api_filter"
             }
         else:
             return {
@@ -89,100 +71,115 @@ async def get_appointment(request: GetAppointmentRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving appointments: {str(e)}")
 
-async def fetch_appointments_from_kolla(patient_phone: str) -> List[Dict[str, Any]]:
+async def fetch_appointments_by_phone_filter(patient_phone: str) -> List[Dict[str, Any]]:
     """
-    Fetch appointments from Kolla API for a specific patient using phone number
-    
-    First searches for contact by phone number, then fetches their appointments using contact_id.
+    Fetch appointments from Kolla API using filters
+    Step 1: Find contact by phone using contacts filter
+    Step 2: Get appointments for that contact using appointments filter
     """
     try:
-        # Step 1: Search for contacts (patients) by phone number first
-        contacts_search_url = f"{KOLLA_BASE_URL}/contacts"
+        # Step 1: Find contact by phone number
+        contact_info = await get_contact_by_phone_filter(patient_phone)
         
-        contacts_response = requests.get(
-            contacts_search_url,
-            headers=KOLLA_HEADERS,
-            timeout=10
-        )
-        
-        if contacts_response.status_code != 200:
-            print(f"Error searching for contacts: {contacts_response.status_code}")
+        if not contact_info:
+            print(f"⚠️ No contact found for phone: {patient_phone}")
             return []
-            
-        contacts_data = contacts_response.json()
         
-        # Step 2: Find contact with matching phone number
-        matching_contact = None
-        for contact in contacts_data.get("contacts", []):
-            if contact.get("type") == "PATIENT":
-                # Check all phone numbers for this contact
-                phone_numbers = contact.get("phone_numbers", [])
-                primary_phone = contact.get("primary_phone_number", "")
-                
-                # Normalize phone numbers for comparison
-                contact_phones = [phone.get("number", "").replace(" ", "").replace("-", "").replace("(", "").replace(")", "") 
-                                for phone in phone_numbers]
-                normalized_primary = primary_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-                
-                if patient_phone in contact_phones or patient_phone == normalized_primary:
-                    matching_contact = contact
-                    break
+        # Step 2: Get contact_id for appointments filter
+        contact_id = contact_info.get("name")  # This is usually like "contacts/123"
         
-        if not matching_contact:
-            print(f"No patient found with phone number: {patient_phone}")
+        if not contact_id:
+            print(f"⚠️ No contact ID found for phone: {patient_phone}")
             return []
-            
-        # Step 3: Get contact_id from the matching contact
-        contact_remote_id = matching_contact.get("remote_id")  # This is the contact_id we need
-        contact_name = matching_contact.get("name")  # This is like "contacts/13"
         
-        if not contact_remote_id and not contact_name:
-            print("Contact ID not found in response")
+        print(f"📋 Found contact: {contact_info.get('given_name', '')} {contact_info.get('family_name', '')} ({contact_id})")
+        
+        # Step 3: Get appointments for this contact using appointments filter
+        appointments = await get_appointments_by_contact_filter(contact_id)
+        
+        if appointments:
+            print(f"✅ Found {len(appointments)} appointments for patient")
+            return appointments
+        else:
+            print(f"⚠️ No appointments found for contact: {contact_id}")
             return []
-            
-        print(f"Found matching contact: {contact_name} with remote_id: {contact_remote_id}")
         
-        # Step 4: Fetch all appointments and filter by contact_id
+    except Exception as e:
+        print(f"❌ Error fetching appointments by phone filter: {e}")
+        return []
+
+async def get_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
+    """Get contact information using Kolla contacts filter"""
+    try:
+        contacts_url = f"{KOLLA_BASE_URL}/contacts"
+        
+        # Build filter for phone number search
+        # Phone number is already normalized (e.g., "5551234567")
+        filter_query = f"type='PATIENT' AND state='ACTIVE' AND phone='{patient_phone}'"
+        params = {"filter": filter_query}
+        
+        print(f"📞 Calling Kolla Contacts API: {contacts_url}")
+        print(f"   Filter: {filter_query}")
+        print(f"   Normalized phone: {patient_phone}")
+        
+        response = requests.get(contacts_url, headers=KOLLA_HEADERS, params=params, timeout=10)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ API Error: {response.text}")
+            return None
+            
+        contacts_data = response.json()
+        contacts = contacts_data.get("contacts", [])
+        
+        if contacts:
+            # Return the first matching contact
+            contact = contacts[0]
+            print(f"   ✅ Found contact: {contact.get('given_name', '')} {contact.get('family_name', '')}")
+            return contact
+        
+        return None
+        
+    except Exception as e:
+        print(f"   ❌ Error getting contact by phone filter: {e}")
+        return None
+
+async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, Any]]:
+    """Get appointments for a specific contact using Kolla appointments filter"""
+    try:
         appointments_url = f"{KOLLA_BASE_URL}/appointments"
         
-        appointments_response = requests.get(
-            appointments_url,
-            headers=KOLLA_HEADERS,
-            timeout=10
-        )
+        # Build filter for contact_id and future appointments
+        # Get appointments from past 30 days to future 60 days
+        past_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00Z")
+        future_date = (datetime.now() + timedelta(days=60)).strftime("%Y-%m-%dT23:59:59Z")
         
-        if appointments_response.status_code != 200:
-            print(f"Error fetching appointments: {appointments_response.status_code}")
+        filter_query = f"contact_id='{contact_id}' AND start_time > '{past_date}' AND start_time < '{future_date}'"
+        params = {"filter": filter_query}
+        
+        print(f"📞 Calling Kolla Appointments API: {appointments_url}")
+        print(f"   Filter: {filter_query}")
+        
+        response = requests.get(appointments_url, headers=KOLLA_HEADERS, params=params, timeout=10)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ API Error: {response.text}")
             return []
             
-        appointments_data = appointments_response.json()
-        all_appointments = appointments_data.get("appointments", [])
+        appointments_data = response.json()
+        appointments = appointments_data.get("appointments", [])
         
-        # Step 5: Filter appointments by contact_id and get the latest ones
-        patient_appointments = []
-        for appointment in all_appointments:
-            appointment_contact_id = appointment.get("contact_id")
-            
-            # Match either by contact name or remote_id
-            if (appointment_contact_id == contact_name or 
-                appointment_contact_id == f"contacts/{contact_remote_id}"):
-                patient_appointments.append(appointment)
+        print(f"   ✅ Retrieved {len(appointments)} appointments")
         
-        if not patient_appointments:
-            print(f"No appointments found for contact_id: {contact_name}")
-            return []
+        # Sort appointments by start_time to get the latest ones first
+        appointments.sort(key=lambda x: x.get("start_time", ""), reverse=True)
         
-        # Step 6: Sort appointments by start_time to get the latest ones first
-        patient_appointments.sort(key=lambda x: x.get("start_time", ""), reverse=True)
-        
-        # Step 7: Enrich appointment data
+        # Enrich appointment data
         enriched_appointments = []
-        for appointment in patient_appointments:
+        for appointment in appointments:
             enriched_appointment = {
                 **appointment,
-                "patient_matched": True,
-                "search_phone": patient_phone,
-                "patient_details": matching_contact,
                 "appointment_date": appointment.get("start_time", "").split("T")[0] if appointment.get("start_time") else None,
                 "appointment_time": appointment.get("start_time", "").split("T")[1] if appointment.get("start_time") else None,
                 "wall_date": appointment.get("wall_start_time", "").split(" ")[0] if appointment.get("wall_start_time") else None,
@@ -199,14 +196,10 @@ async def fetch_appointments_from_kolla(patient_phone: str) -> List[Dict[str, An
             
             enriched_appointments.append(enriched_appointment)
         
-        print(f"Found {len(enriched_appointments)} appointments for patient")
         return enriched_appointments
         
-    except requests.RequestException as e:
-        print(f"API request failed: {e}")
-        return []
     except Exception as e:
-        print(f"Error fetching appointments from Kolla: {e}")
+        print(f"   ❌ Error getting appointments by contact filter: {e}")
         return []
 
 def calculate_duration(start_time: str, end_time: str) -> Optional[int]:
@@ -231,65 +224,111 @@ async def get_appointment_by_phone_only(patient_phone: str):
 
 @router.post("/get_appointment/refresh")
 async def refresh_appointments_cache(request: GetAppointmentRequest):
-    """Manually refresh the appointments cache for a specific patient"""
+    """Force refresh appointment data from Kolla API"""
     try:
         # Normalize phone number
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         
         # Force fetch from API
-        appointments = await fetch_appointments_from_kolla(normalized_phone)
-        
-        # Update cache
-        if appointments:
-            for appointment in appointments:
-                cache_service.store_appointment(appointment)
+        appointments = await fetch_appointments_by_phone_filter(normalized_phone)
         
         return {
             "success": True,
-            "message": "Appointments cache refreshed",
+            "message": "Appointments data refreshed from Kolla API",
             "patient_phone": request.phone,
             "appointments_found": len(appointments),
             "appointments": appointments
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error refreshing appointments cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error refreshing appointments data: {str(e)}")
 
 @router.get("/appointments/search")
 async def search_appointments(
     phone: Optional[str] = None,
+    contact_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ):
     """
-    Search appointments with flexible parameters
+    Search appointments with flexible parameters using Kolla API filters
     """
     try:
         if phone:
-            # Use the main get_appointment function
-            request = GetAppointmentRequest(phone=phone)
-            return await get_appointment(request)
+            # Use phone-based search
+            normalized_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+            appointments = await fetch_appointments_by_phone_filter(normalized_phone)
+            
+            return {
+                "success": True,
+                "search_type": "phone",
+                "search_value": phone,
+                "appointments": appointments,
+                "total_appointments": len(appointments)
+            }
         
-        # For other search criteria, fetch from API
-        getkolla_service = GetKollaService()
+        if contact_id:
+            # Use contact_id-based search
+            appointments = await get_appointments_by_contact_filter(contact_id)
+            
+            return {
+                "success": True,
+                "search_type": "contact_id",
+                "search_value": contact_id,
+                "appointments": appointments,
+                "total_appointments": len(appointments)
+            }
         
-        if not start_date:
-            start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        if not end_date:
-            end_date = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-        
-        all_appointments = getkolla_service.get_appointments(start_date, end_date)
+        if start_date and end_date:
+            # Use date range search
+            appointments = await get_appointments_by_date_range(start_date, end_date)
+            
+            return {
+                "success": True,
+                "search_type": "date_range",
+                "search_value": f"{start_date} to {end_date}",
+                "appointments": appointments,
+                "total_appointments": len(appointments)
+            }
         
         return {
-            "success": True,
-            "search_criteria": {
-                "phone": phone,
-                "start_date": start_date,
-                "end_date": end_date
-            },
-            "appointments": all_appointments.get("appointments", []),
-            "total_appointments": len(all_appointments.get("appointments", []))
+            "success": False,
+            "message": "Please provide either phone, contact_id, or date range (start_date + end_date) parameters",
+            "available_parameters": ["phone", "contact_id", "start_date + end_date"]
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching appointments: {str(e)}")
+
+async def get_appointments_by_date_range(start_date: str, end_date: str) -> List[Dict[str, Any]]:
+    """Get appointments for a date range using Kolla appointments filter"""
+    try:
+        appointments_url = f"{KOLLA_BASE_URL}/appointments"
+        
+        # Build filter for date range
+        start_filter = f"{start_date}T00:00:00Z"
+        end_filter = f"{end_date}T23:59:59Z"
+        filter_query = f"start_time > '{start_filter}' AND start_time < '{end_filter}'"
+        
+        params = {"filter": filter_query}
+        
+        print(f"📞 Calling Kolla Appointments API: {appointments_url}")
+        print(f"   Filter: {filter_query}")
+        
+        response = requests.get(appointments_url, headers=KOLLA_HEADERS, params=params, timeout=10)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ API Error: {response.text}")
+            return []
+            
+        appointments_data = response.json()
+        appointments = appointments_data.get("appointments", [])
+        
+        print(f"   ✅ Retrieved {len(appointments)} appointments for date range")
+        
+        return appointments
+        
+    except Exception as e:
+        print(f"   ❌ Error getting appointments by date range: {e}")
+        return []

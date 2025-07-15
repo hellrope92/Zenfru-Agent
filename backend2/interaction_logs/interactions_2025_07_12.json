@@ -1,0 +1,23 @@
+[
+  {
+    "interaction_id": "0a452378-c628-4f32-a641-13dc9aa7078f",
+    "timestamp": "2025-07-12T23:10:35.026664",
+    "date": "2025-07-12",
+    "time": "23:10:35.026664",
+    "interaction_type": "booking",
+    "patient_name": "Tom Cruise",
+    "contact_number": "******8989",
+    "success": true,
+    "appointment_id": "appointments/92517",
+    "service_type": "Root Canal",
+    "doctor": "Dr. Hanna",
+    "error_message": null,
+    "details": {
+      "date": "2025-07-15",
+      "time": "11:00",
+      "is_new_patient": true,
+      "day": "Tuesday",
+      "contact_id": "contacts/10009"
+    }
+  }
+]

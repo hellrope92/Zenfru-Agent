@@ -40,6 +40,7 @@ class BookAppointmentRequest(BaseModel):
     # Additional fields used by the booking API
     operatory: Optional[str] = None  # Operatory room for the appointment
     slots_needed: Optional[int] = 1  # Number of time slots needed (1 = 30 min, 2 = 1 hour, etc.)
+    iscleaning: Optional[bool] = False  # True for hygienist appointments (cleaning), False for doctor appointments
 
 class CheckSlotsRequest(BaseModel):
     day: str
