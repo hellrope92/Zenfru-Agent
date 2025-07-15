@@ -7,6 +7,12 @@ from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from services.patient_interaction_logger import patient_logger
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import pytz
+import shutil
+import os
 
 router = APIRouter(prefix="/api", tags=["reporting"])
 
@@ -273,3 +279,46 @@ async def list_log_files():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing log files: {str(e)}")
+
+# Set up default email config for production
+patient_logger.update_config({
+    "email": {
+        "username": "kay@zenfru.com",
+        "password": "lmep clnw bond khwr",
+        "recipients": ["karanissar@gmail.com", "monilmehta5@gmail.com"],
+        "smtp_server": "smtp.gmail.com",
+        "smtp_port": 587
+    },
+    "reporting": {
+        "daily_email_time": "08:00",  # US morning
+        "include_patient_details": True
+    }
+})
+
+async def send_and_archive_daily_report():
+    """Send daily report in US morning, archive after sending, rotate to next day."""
+    tz = pytz.timezone("US/Eastern")
+    now = datetime.now(tz)
+    send_time = patient_logger.config["reporting"].get("daily_email_time", "08:00")
+    send_hour, send_minute = map(int, send_time.split(":"))
+    if now.hour == send_hour and now.minute < 10:  # Run in first 10 min of hour
+        today = now.date()
+        html_report = patient_logger.generate_daily_report(today)
+        try:
+            patient_logger._send_email_report(html_report, today)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error sending daily report: {str(e)}")
+        # Archive report
+        archive_dir = patient_logger.log_directory / "archive"
+        archive_dir.mkdir(exist_ok=True)
+        report_filename = f"daily_report_{today.strftime('%Y_%m_%d')}.html"
+        report_path = patient_logger.log_directory / report_filename
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(html_report)
+        shutil.move(str(report_path), str(archive_dir / report_filename))
+        # Rotate to next day (clear or create new file)
+        next_day = today + timedelta(days=1)
+        next_report_path = patient_logger.log_directory / f"daily_report_{next_day.strftime('%Y_%m_%d')}.html"
+        if not next_report_path.exists():
+            with open(next_report_path, 'w', encoding='utf-8') as f:
+                f.write("")

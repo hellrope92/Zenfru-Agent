@@ -9,20 +9,22 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
+import logging
+import asyncio
 
 from api.models import LogCallbackRequest
 
 router = APIRouter(prefix="/api", tags=["callbacks"])
 
+# Initialize logger
+logger = logging.getLogger(__name__)
+
 # In-memory storage for demo (in production, use a database)
 callback_requests = []
 
-@router.post("/log_callback_request")
+@router.post("/log_callback_request", status_code=201)
 async def log_callback_request(request: LogCallbackRequest):
-    """
-    Records callback requests when clinic is closed or tools fail
-    Parameters: name, contact, reason, preferred_callback_time
-    """
+    """Records a callback request and persists to file"""
     try:
         # Create callback request entry
         callback_entry = {
@@ -44,15 +46,14 @@ async def log_callback_request(request: LogCallbackRequest):
         # Store the callback request
         callback_requests.append(callback_entry)
         
-        # Also save to file for persistence
-        await save_callback_to_file(callback_entry)
+        # Save asynchronously off the event loop
+        await asyncio.to_thread(save_callback_to_file, callback_entry)
         
         # Determine urgency and response time
         urgency_info = get_urgency_info(request.reason)
         
         return {
             "success": True,
-            "message": "Callback request logged successfully",
             "callback_id": callback_entry["id"],
             "request_details": {
                 "patient_name": request.name,
@@ -67,7 +68,8 @@ async def log_callback_request(request: LogCallbackRequest):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error logging callback request: {str(e)}")
+        logger.error("Error logging callback request", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal error logging callback request")
 
 def determine_priority(reason: str) -> str:
     """Determine priority level based on the reason for callback"""
@@ -127,25 +129,20 @@ def get_urgency_info(reason: str) -> Dict[str, Any]:
 
 async def save_callback_to_file(callback_entry: Dict[str, Any]):
     """Save callback request to file for persistence"""
-    try:
-        callbacks_file = Path(__file__).parent.parent / "callback_requests.json"
-        
-        # Load existing callbacks
-        if callbacks_file.exists():
-            with open(callbacks_file, 'r') as f:
-                existing_callbacks = json.load(f)
-        else:
-            existing_callbacks = []
-        
-        # Add new callback
-        existing_callbacks.append(callback_entry)
-        
-        # Save back to file
-        with open(callbacks_file, 'w') as f:
-            json.dump(existing_callbacks, f, indent=2)
-            
-    except Exception as e:
-        print(f"Error saving callback to file: {e}")
+    callbacks_file = Path(__file__).parent.parent / "callback_requests.json"
+    def sync_save():
+        try:
+            if callbacks_file.exists():
+                with open(callbacks_file, 'r') as f:
+                    existing = json.load(f)
+            else:
+                existing = []
+            existing.append(callback_entry)
+            with open(callbacks_file, 'w') as f:
+                json.dump(existing, f, indent=2)
+        except Exception as ex:
+            logger.error("Failed to save callback to file", exc_info=True)
+    await asyncio.to_thread(sync_save)
 
 @router.get("/callback_requests")
 async def get_callback_requests(
@@ -231,73 +228,47 @@ async def get_callback_request(callback_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving callback request: {str(e)}")
 
-@router.put("/callback_requests/{callback_id}/status")
+@router.put("/callback_requests/{callback_id}/status", status_code=200)
 async def update_callback_status(callback_id: str, status: str, notes: Optional[str] = None):
-    """Update the status of a callback request"""
-    try:
-        valid_statuses = ["pending", "in_progress", "completed", "cancelled"]
-        if status not in valid_statuses:
-            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
-        
-        # Update in memory
-        updated = False
-        for callback in callback_requests:
-            if callback["id"] == callback_id:
-                callback["status"] = status
-                if status == "completed":
-                    callback["resolved_at"] = datetime.now().isoformat()
-                if notes:
-                    callback["notes"].append({
-                        "timestamp": datetime.now().isoformat(),
-                        "note": notes,
-                        "added_by": "staff"
-                    })
-                updated = True
-                break
-        
-        # Update in file
+    """Update the status of an existing callback request"""
+    valid = ["pending","in_progress","completed","cancelled"]
+    if status not in valid:
+        raise HTTPException(status_code=400, detail=f"Status must be one of {valid}")
+    updated = False
+    # In-memory update
+    for cb in callback_requests:
+        if cb["id"] == callback_id:
+            cb["status"] = status
+            if status == "completed":
+                cb["resolved_at"] = datetime.now().isoformat()
+            if notes:
+                cb.setdefault("notes",[]).append({
+                    "timestamp": datetime.now().isoformat(),
+                    "note": notes,
+                    "added_by": "staff"
+                })
+            updated = True
+            break
+    if not updated:
+        raise HTTPException(status_code=404, detail="Callback ID not found")
+    # Persist file update
+    async def sync_update():
         callbacks_file = Path(__file__).parent.parent / "callback_requests.json"
-        if callbacks_file.exists():
-            with open(callbacks_file, 'r') as f:
-                file_callbacks = json.load(f)
-            
-            for callback in file_callbacks:
-                if callback["id"] == callback_id:
-                    callback["status"] = status
-                    if status == "completed":
-                        callback["resolved_at"] = datetime.now().isoformat()
-                    if notes:
-                        if "notes" not in callback:
-                            callback["notes"] = []
-                        callback["notes"].append({
-                            "timestamp": datetime.now().isoformat(),
-                            "note": notes,
-                            "added_by": "staff"
-                        })
-                    updated = True
-                    break
-            
-            if updated:
-                with open(callbacks_file, 'w') as f:
-                    json.dump(file_callbacks, f, indent=2)
-        
-        if updated:
-            return {
-                "success": True,
-                "message": f"Callback request {callback_id} status updated to {status}",
-                "callback_id": callback_id,
-                "new_status": status
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"Callback request {callback_id} not found"
-            }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating callback status: {str(e)}")
+        if not callbacks_file.exists(): return
+        try:
+            with open(callbacks_file,'r') as f:
+                file_list = json.load(f)
+            for fcb in file_list:
+                if fcb["id"] == callback_id:
+                    fcb["status"] = status
+                    if status=="completed": fcb["resolved_at"] = datetime.now().isoformat()
+                    if notes: fcb.setdefault("notes",[]).append({"timestamp": datetime.now().isoformat(),"note": notes,"added_by": "staff"})
+            with open(callbacks_file,'w') as f:
+                json.dump(file_list, f, indent=2)
+        except Exception:
+            logger.error("Failed to persist callback status update", exc_info=True)
+    await asyncio.to_thread(sync_update)
+    return {"success": True, "callback_id": callback_id, "new_status": status}
 
 @router.get("/callback_requests/stats/summary")
 async def get_callback_stats():

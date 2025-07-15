@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from dotenv import load_dotenv
+import logging
 
 from api.models import GetContactRequest
 
@@ -19,6 +20,7 @@ from api.models import GetContactRequest
 load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["contacts"])
+logger = logging.getLogger(__name__)
 
 # Kolla API configuration
 KOLLA_BASE_URL = os.getenv("KOLLA_BASE_URL", "https://unify.kolla.dev/dental/v1")
@@ -36,9 +38,8 @@ async def get_contact(request: GetContactRequest):
     Parameters: phone (required), name, dob (optional for legacy support)
     Used for booking appointments with existing patients
     """
-    try:        
-        # Print phone number as requested
-        print(f"🔍 Fetching contact for patient phone: {request.phone}")
+    try:
+        logger.info(f"Fetching contact for patient phone: {request.phone}")
         
         # Normalize phone number
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
@@ -46,7 +47,9 @@ async def get_contact(request: GetContactRequest):
         # Use Kolla API filter to search for contacts by phone number
         contact_info = await fetch_contact_by_phone_filter(normalized_phone)
         
-        if contact_info:
+        if not contact_info:
+            logger.warning(f"No contact information found for phone: {request.phone}")
+            raise HTTPException(status_code=404, detail="No contact found for specified patient")
             patient_name = f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip()
             
             return {
@@ -67,8 +70,11 @@ async def get_contact(request: GetContactRequest):
                 "contact_info": None
             }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving contact information: {str(e)}")
+        logger.error("Error in get_contact", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal error retrieving contact information")
 
 async def fetch_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
     """Fetch contact information from Kolla API using phone filter"""

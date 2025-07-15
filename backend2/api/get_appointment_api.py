@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from dotenv import load_dotenv
+import logging
 
 from api.models import GetAppointmentRequest
 
@@ -21,6 +22,7 @@ from api.models import GetAppointmentRequest
 load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["appointments"])
+logger = logging.getLogger(__name__)
 
 # Kolla API configuration
 KOLLA_BASE_URL = os.getenv("KOLLA_BASE_URL", "https://unify.kolla.dev/dental/v1")
@@ -40,8 +42,7 @@ async def get_appointment(request: GetAppointmentRequest):
     Note: Matching is performed by phone number for accurate patient identification.
     """
     try:
-        # Print phone number as requested
-        print(f"🔍 Fetching appointments for patient phone: {request.phone}")
+        logger.info(f"Fetching appointments for patient phone: {request.phone}")
         
         # Normalize phone number (remove spaces, dashes, etc.)
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
@@ -49,27 +50,24 @@ async def get_appointment(request: GetAppointmentRequest):
         # Use Kolla API to get appointments for this phone number
         appointments = await fetch_appointments_by_phone_filter(normalized_phone)
         
-        if appointments:
-            # Get the latest appointment (first one since they're sorted by start_time desc)
-            latest_appointment = appointments[0] if appointments else None
-            
-            return {
-                "success": True,
-                "patient_phone": request.phone,
-                "appointment": latest_appointment,
-                "total_appointments": len(appointments),
-                "source": "kolla_api_filter"
-            }
-        else:
-            return {
-                "success": False,
-                "message": "No appointments found for the specified patient",
-                "patient_phone": request.phone,
-                "appointment": None
-            }
+        if not appointments:
+            logger.warning(f"No appointments found for patient phone: {request.phone}")
+            raise HTTPException(status_code=404, detail="No appointments found for specified patient")
+        # Return the latest appointment
+        latest_appointment = appointments[0]
+        return {
+            "success": True,
+            "patient_phone": request.phone,
+            "appointment": latest_appointment,
+            "total_appointments": len(appointments),
+            "source": "kolla_api_filter"
+        }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving appointments: {str(e)}")
+        logger.error("Error in get_appointment", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal error retrieving appointments")
 
 async def fetch_appointments_by_phone_filter(patient_phone: str) -> List[Dict[str, Any]]:
     """

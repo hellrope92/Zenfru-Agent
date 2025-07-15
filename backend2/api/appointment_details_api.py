@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from services.local_cache_service import LocalCacheService
+import json
 
 KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
 KOLLA_HEADERS = {
@@ -26,11 +27,10 @@ async def get_appointment_details(request: AppointmentDetailsRequest):
     Parameters: phone (required) - Patient's phone number for identification
     """
     try:
-        # Print phone number as requested
-        print(f"Fetching appointment details for patient phone: {request.phone}")
-        
+        # Fetching appointment details for patient by phone
+         
         # Normalize phone number (remove spaces, dashes, etc.)
-        normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        normalized_phone = ''.join(filter(str.isdigit, request.phone))
         
         # First check local cache for appointments by phone
         cached_appointment = cache_service.get_appointments_by_phone(normalized_phone)
@@ -86,10 +86,8 @@ async def get_appointment_details(request: AppointmentDetailsRequest):
                         appointments_data = appointments_response.json()
                         appointments = appointments_data.get("appointments", [])
                         
-                        # Cache the appointment data
-                        if appointments:
-                            for appointment in appointments:
-                                cache_service.store_appointment(appointment)
+                        for appointment in appointments:
+                            cache_service.store_appointment(appointment)
                         
                         return {
                             "success": True,
@@ -121,18 +119,10 @@ async def get_appointment_details(request: AppointmentDetailsRequest):
                     "appointment_details": None
                 }
                 
-        except requests.RequestException as e:
-            print(f"API request failed: {e}")
-            return {
-                "success": False,
-                "message": "Unable to connect to appointment system",
-                "patient_phone": request.phone,
-                "appointment_details": None,
-                "error": "Connection error"
-            }
+        except requests.RequestException:
+            raise HTTPException(status_code=503, detail="Unable to connect to appointment system")
         
-    except Exception as e:
-        print(f"Error in get_appointment_details: {e}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving appointment details: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error retrieving appointment details")
 
 # Endpoints removed as requested

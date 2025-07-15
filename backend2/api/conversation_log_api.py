@@ -9,12 +9,15 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
+import logging
+import asyncio
 
 from api.models import LogConversationRequest
 
 router = APIRouter(prefix="/api", tags=["conversation-logs"])
+logger = logging.getLogger(__name__)
 
-@router.post("/log_conversation_summary")
+@router.post("/log_conversation_summary", status_code=201)
 async def log_conversation_summary(request: LogConversationRequest):
     """
     Creates conversation logs at the end of each call
@@ -40,13 +43,9 @@ async def log_conversation_summary(request: LogConversationRequest):
                 "outcome_category": categorize_outcome(request.call_outcome)
             }
         }
-        
-        # Save the conversation log
-        await save_conversation_log(log_entry)
-        
-        # Generate insights
+        # Save asynchronously to avoid blocking
+        await asyncio.to_thread(save_conversation_log, log_entry)
         insights = await generate_conversation_insights(log_entry)
-        
         return {
             "success": True,
             "message": "Conversation logged successfully",
@@ -61,9 +60,9 @@ async def log_conversation_summary(request: LogConversationRequest):
             "insights": insights,
             "timestamp": log_entry["timestamp"]
         }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error logging conversation: {str(e)}")
+    except Exception:
+        logger.error("Error logging conversation", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal error logging conversation")
 
 def determine_interaction_type(summary: str) -> str:
     """Determine the type of interaction based on summary content"""
@@ -176,29 +175,20 @@ def estimate_satisfaction(summary: str, outcome: str) -> str:
 
 async def save_conversation_log(log_entry: Dict[str, Any]):
     """Save conversation log to file"""
+    logs_file = Path(__file__).parent.parent / "conversation_logs.json"
     try:
-        logs_file = Path(__file__).parent.parent / "conversation_logs.json"
-        
-        # Load existing logs
         if logs_file.exists():
             with open(logs_file, 'r') as f:
                 existing_logs = json.load(f)
         else:
             existing_logs = []
-        
-        # Add new log
         existing_logs.append(log_entry)
-        
-        # Keep only last 1000 entries to manage file size
         if len(existing_logs) > 1000:
             existing_logs = existing_logs[-1000:]
-        
-        # Save back to file
         with open(logs_file, 'w') as f:
             json.dump(existing_logs, f, indent=2)
-            
-    except Exception as e:
-        print(f"Error saving conversation log: {e}")
+    except Exception:
+        logger.error("Failed to save conversation log", exc_info=True)
 
 async def generate_conversation_insights(log_entry: Dict[str, Any]) -> Dict[str, Any]:
     """Generate insights from the conversation log"""
@@ -213,9 +203,8 @@ async def generate_conversation_insights(log_entry: Dict[str, Any]) -> Dict[str,
         }
         
         return insights
-        
-    except Exception as e:
-        print(f"Error generating insights: {e}")
+    except Exception:
+        logger.error("Error generating conversation insights", exc_info=True)
         return {}
 
 def calculate_efficiency_score(log_entry: Dict[str, Any]) -> float:

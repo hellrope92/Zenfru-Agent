@@ -234,14 +234,70 @@ async def reschedule_by_phone(request: RescheduleByPhoneRequest):
             "phone": request.phone
         }
 
+async def get_appointment_details(appointment_id: str) -> Optional[Dict[str, Any]]:
+    """Get appointment details from Kolla API"""
+    try:
+        url = f"{KOLLA_BASE_URL}/appointments/{appointment_id}"
+        print(f"📋 Fetching appointment details: {url}")
+        
+        response = requests.get(url, headers=KOLLA_HEADERS, timeout=10)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ API Error: {response.text}")
+            return None
+            
+        appointment_data = response.json()
+        print(f"   ✅ Retrieved appointment details for: {appointment_id}")
+        return appointment_data
+        
+    except Exception as e:
+        print(f"   ❌ Error fetching appointment details: {e}")
+        return None
+
+async def cancel_appointment(appointment_id: str) -> bool:
+    """Cancel an appointment using Kolla API"""
+    try:
+        url = f"{KOLLA_BASE_URL}/appointments/{appointment_id}:cancel"
+        
+        # Prepare cancellation payload as per EagleSoft requirements
+        cancel_payload = {
+            "name": appointment_id,
+            "canceler": {
+                "name": "resources/provider_HO7",
+                "remote_id": "HO7"
+            },
+            "procedure_code": ""
+        }
+        
+        print(f"❌ Cancelling appointment: {url}")
+        print(f"   Payload: {cancel_payload}")
+        
+        response = requests.post(url, headers=KOLLA_HEADERS, json=cancel_payload, timeout=10)
+        print(f"   Response status: {response.status_code}")
+        print(f"   Response text: {response.text}")
+        
+        if response.status_code in (200, 204):
+            print(f"   ✅ Successfully cancelled appointment: {appointment_id}")
+            return True
+        else:
+            print(f"   ❌ Failed to cancel appointment: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"   ❌ Error cancelling appointment: {e}")
+        return False
+
 @router.post("/reschedule_patient_appointment")
 async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
     """
-    Reschedule an existing appointment using Kolla API.
+    Reschedule an existing appointment using EagleSoft-compatible workflow:
+    1. Cancel the existing appointment
+    2. Create a new appointment with the new time details
     Accepts: appointment_id, date, start_time, end_time, notes
     """
     try:
-        print(f"🔄 RESCHEDULE_PATIENT_APPOINTMENT:")
+        print(f"🔄 RESCHEDULE_PATIENT_APPOINTMENT (Cancel + Create New):")
         print(f"   Appointment ID: {request.appointment_id}")
         print(f"   Date: {request.date}")
         print(f"   Start Time: {request.start_time}")
@@ -252,46 +308,94 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         if not appointment_id:
             raise HTTPException(status_code=400, detail="appointment_id is required")
 
-        patch_data = {}
-        # Kolla expects wall_start_time and wall_end_time for updates, not start_time/end_time
-        if request.date and request.start_time:
-            print(f"   Combining date '{request.date}' and start_time '{request.start_time}'")
-            wall_start = combine_date_time_to_wall(request.date, request.start_time)
-            print(f"   Combined wall_start_time result: {wall_start}")
-            if not wall_start:
-                raise HTTPException(status_code=400, detail="Invalid date or start_time format")
-            patch_data["wall_start_time"] = wall_start
-        elif request.start_time:
-            raise HTTPException(status_code=400, detail="If you provide start_time, you must also provide date.")
-        
-        if request.date and request.end_time:
-            print(f"   Combining date '{request.date}' and end_time '{request.end_time}'")
-            wall_end = combine_date_time_to_wall(request.date, request.end_time)
-            print(f"   Combined wall_end_time result: {wall_end}")
-            if not wall_end:
-                raise HTTPException(status_code=400, detail="Invalid date or end_time format")
-            patch_data["wall_end_time"] = wall_end
-        elif request.end_time:
-            raise HTTPException(status_code=400, detail="If you provide end_time, you must also provide date.")
-        
-        if request.notes:
-            patch_data["notes"] = request.notes
+        # Validate that we have the required fields for creating a new appointment
+        if not request.date or not request.start_time or not request.end_time:
+            raise HTTPException(status_code=400, detail="date, start_time, and end_time are required for rescheduling")
 
-        print(f"   Final patch_data: {patch_data}")
-
-        if not patch_data:
-            raise HTTPException(status_code=400, detail="No valid reschedule data provided")
-
-        url = f"{KOLLA_BASE_URL}/appointments/{appointment_id}"
-        print(f"   Sending PATCH to: {url}")
-        print(f"   Headers: {KOLLA_HEADERS}")
+        # Step 1: Get original appointment details before cancelling
+        print(f"📋 Step 1: Getting original appointment details...")
+        original_appointment = await get_appointment_details(appointment_id)
         
-        response = requests.patch(url, headers=KOLLA_HEADERS, json=patch_data, timeout=10)
+        if not original_appointment:
+            return {
+                "success": False, 
+                "message": f"Could not retrieve original appointment details for {appointment_id}",
+                "status": "failed"
+            }
+
+        # Extract important details from original appointment
+        contact_info = original_appointment.get("contact", {})
+        contact_id = contact_info.get("name", "")
+        providers = original_appointment.get("providers", [])
+        original_resources = original_appointment.get("resources", [])
+        original_operatory = original_appointment.get("operatory", "")
+        original_service = original_appointment.get("short_description", "Rescheduled Appointment")
+        
+        print(f"   📋 Original appointment details:")
+        print(f"   Contact: {contact_info.get('given_name', '')} {contact_info.get('family_name', '')} ({contact_id})")
+        print(f"   Providers: {[p.get('remote_id', 'N/A') for p in providers]}")
+        print(f"   Operatory: {original_operatory}")
+        print(f"   Service: {original_service}")
+
+        # Step 2: Cancel the existing appointment
+        print(f"❌ Step 2: Cancelling original appointment...")
+        cancel_success = await cancel_appointment(appointment_id)
+        
+        if not cancel_success:
+            return {
+                "success": False,
+                "message": f"Failed to cancel original appointment {appointment_id}",
+                "status": "cancel_failed"
+            }
+
+        # Step 3: Create new appointment with the new time details
+        print(f"📅 Step 3: Creating new appointment with updated time...")
+        
+        # Combine date and time for new appointment
+        wall_start_time = combine_date_time_to_wall(request.date, request.start_time)
+        wall_end_time = combine_date_time_to_wall(request.date, request.end_time)
+        
+        if not wall_start_time or not wall_end_time:
+            return {
+                "success": False,
+                "message": "Invalid date or time format provided",
+                "status": "invalid_time_format"
+            }
+
+        # Prepare new appointment data
+        new_appointment_data = {
+            "contact_id": contact_id,
+            "contact": contact_info,
+            "wall_start_time": wall_start_time,
+            "wall_end_time": wall_end_time,
+            "providers": providers,
+            "resources": original_resources,
+            "appointment_type_id": "appointmenttypes/1",
+            "operatory": original_operatory,
+            "scheduler": {
+                "name": "",
+                "remote_id": "HO7",
+                "type": "",
+                "display_name": ""
+            },
+            "short_description": original_service,
+            "notes": request.notes or "Rescheduled appointment",
+            "additional_data": original_appointment.get("additional_data", {})
+        }
+
+        print(f"   📋 New appointment data:")
+        print(f"   Time: {wall_start_time} - {wall_end_time}")
+        print(f"   Notes: {request.notes}")
+
+        # Create the new appointment
+        url = f"{KOLLA_BASE_URL}/appointments"
+        response = requests.post(url, headers=KOLLA_HEADERS, json=new_appointment_data, timeout=10)
         print(f"   Response status: {response.status_code}")
         print(f"   Response text: {response.text}")
         
-        if response.status_code in (200, 204):
-            print(f"   ✅ Success: Appointment rescheduled")
+        if response.status_code in (200, 201):
+            new_appointment_id = response.json().get('name', f"NEW-{appointment_id}")
+            print(f"   ✅ Success: New appointment created with ID: {new_appointment_id}")
             
             # Log successful rescheduling interaction
             patient_logger.log_interaction(
@@ -299,36 +403,61 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 success=True,
                 appointment_id=appointment_id,
                 details={
+                    "original_appointment_id": appointment_id,
+                    "new_appointment_id": new_appointment_id,
                     "date": request.date,
                     "start_time": request.start_time,
                     "end_time": request.end_time,
                     "notes": request.notes,
-                    "updated_fields": patch_data,
-                    "api_method": "kolla_filter_based"
+                    "wall_start_time": wall_start_time,
+                    "wall_end_time": wall_end_time,
+                    "api_method": "cancel_and_create",
+                    "contact_id": contact_id
                 }
             )
             
-            return {"success": True, "message": f"Appointment {appointment_id} rescheduled successfully", "appointment_id": appointment_id, "updated_fields": patch_data, "status": "rescheduled"}
+            return {
+                "success": True, 
+                "message": f"Appointment successfully rescheduled from {appointment_id} to {new_appointment_id}",
+                "original_appointment_id": appointment_id,
+                "new_appointment_id": new_appointment_id,
+                "date": request.date,
+                "start_time": request.start_time,
+                "end_time": request.end_time,
+                "wall_start_time": wall_start_time,
+                "wall_end_time": wall_end_time,
+                "notes": request.notes,
+                "status": "rescheduled"
+            }
         else:
-            print(f"   ❌ Failed: {response.text}")
+            print(f"   ❌ Failed to create new appointment: {response.text}")
             
             # Log failed rescheduling interaction
             patient_logger.log_interaction(
                 interaction_type="rescheduling",
                 success=False,
                 appointment_id=appointment_id,
-                error_message=f"Kolla API error: {response.text}",
+                error_message=f"Failed to create new appointment: {response.text}",
                 details={
+                    "original_appointment_id": appointment_id,
                     "date": request.date,
                     "start_time": request.start_time,
                     "end_time": request.end_time,
                     "notes": request.notes,
                     "status_code": response.status_code,
-                    "api_method": "kolla_filter_based"
+                    "api_method": "cancel_and_create",
+                    "step_failed": "create_new_appointment"
                 }
             )
             
-            return {"success": False, "message": f"Failed to reschedule appointment: {response.text}", "status_code": response.status_code, "appointment_id": appointment_id, "status": "failed"}
+            return {
+                "success": False, 
+                "message": f"Original appointment was cancelled, but failed to create new appointment: {response.text}",
+                "original_appointment_id": appointment_id,
+                "status": "partial_failure",
+                "status_code": response.status_code
+            }
+            
     except HTTPException:
         raise
     except Exception as e:
@@ -349,11 +478,16 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "end_time": request.end_time,
                 "notes": request.notes,
                 "error_type": "exception",
-                "api_method": "kolla_filter_based"
+                "api_method": "cancel_and_create"
             }
         )
         
-        return {"success": False, "message": "An error occurred while rescheduling the appointment. Please contact the clinic directly.", "status": "error", "error": str(e)}
+        return {
+            "success": False, 
+            "message": "An error occurred while rescheduling the appointment. Please contact the clinic directly.", 
+            "status": "error", 
+            "error": str(e)
+        }
 
 def combine_date_time(date_str: str, time_str: str) -> Optional[str]:
     """
