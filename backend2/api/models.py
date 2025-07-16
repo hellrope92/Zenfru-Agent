@@ -11,15 +11,23 @@ class ContactInfo(BaseModel):
     given_name: Optional[str] = None
     family_name: Optional[str] = None
     preferred_name: Optional[str] = None
-    gender: Optional[str] = None  # e.g., 'GENDER_MALE', 'GENDER_FEMALE', 'GENDER_OTHER'
+    gender: Optional[str] = None  # e.g., 'MALE', 'FEMALE', 'GENDER_UNSPECIFIED'
     birth_date: Optional[str] = None  # YYYY-MM-DD
     notes: Optional[str] = None
+    # Address fields
+    street_address: Optional[str] = None
+    city: Optional[str] = None
+    state_address: Optional[str] = None  # Address state (renamed to avoid conflict with patient state)
+    postal_code: Optional[str] = None
+    country_code: Optional[str] = None
     addresses: Optional[List[Dict[str, Any]]] = None  # List of address dicts
     phone_numbers: Optional[List[Dict[str, Any]]] = None  # List of phone dicts
     email_addresses: Optional[List[Dict[str, Any]]] = None  # List of email dicts
     state: Optional[str] = None  # e.g., 'ACTIVE', 'ARCHIVED'
     opt_ins: Optional[Dict[str, Optional[bool]]] = None  # e.g., {'sms': True, 'email': False}
     preferred_provider: Optional[Dict[str, Any]] = None
+    preferred_hygienist_id: Optional[str] = None  # e.g., 'H20', 'HO4'
+    preferred_hygienist_name: Optional[str] = None  # e.g., 'resources/provider_H20'
     first_visit: Optional[str] = None  # YYYY-MM-DD
     guarantor: Optional[str] = None
     additional_data: Optional[Dict[str, Any]] = None

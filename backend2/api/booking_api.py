@@ -207,7 +207,7 @@ def convert_time_to_datetime(date_str: str, time_str: str) -> datetime:
         # Return a default datetime if parsing fails
         return datetime.now()
 
-def create_kolla_contact(contact_info: dict) -> Optional[str]:
+def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Optional[str]:
     """Create a new contact in Kolla, return contact_id if successful."""
     url = f"{KOLLA_BASE_URL}/contacts"
     payload = contact_info.copy()
@@ -216,7 +216,7 @@ def create_kolla_contact(contact_info: dict) -> Optional[str]:
     payload.pop('name', None)
     
     # Remove fields that should not be sent during contact creation
-    fields_to_remove = ['guarantor', 'preferred_provider']
+    fields_to_remove = ['guarantor']  # Remove guarantor, but keep preferred_provider for processing
     for field in fields_to_remove:
         payload.pop(field, None)
     
@@ -226,8 +226,123 @@ def create_kolla_contact(contact_info: dict) -> Optional[str]:
     if 'type' not in payload:
         payload['type'] = 'PATIENT'
     
-    # Remove first_visit for now as it might be causing issues
-    payload.pop('first_visit', None)
+    # Set gender to GENDER_UNSPECIFIED if not provided
+    if 'gender' not in payload or not payload['gender']:
+        payload['gender'] = 'GENDER_UNSPECIFIED'
+    
+    # Ensure phone_numbers is properly formatted
+    if 'phone_numbers' not in payload and payload.get('number'):
+        payload['phone_numbers'] = [{"number": payload['number'], "type": "MOBILE"}]
+    elif 'phone_numbers' in payload:
+        # Ensure phone types are set correctly
+        for phone in payload['phone_numbers']:
+            if 'type' not in phone or not phone['type']:
+                phone['type'] = 'MOBILE'
+    
+    # Set primary phone number
+    if payload.get('phone_numbers') and len(payload['phone_numbers']) > 0:
+        payload['primary_phone_number'] = payload['phone_numbers'][0]['number']
+    
+    # Ensure email_addresses is properly formatted
+    if 'email_addresses' not in payload and payload.get('email'):
+        payload['email_addresses'] = [{"address": payload['email'], "type": "HOME"}]
+    elif 'email_addresses' in payload:
+        # Ensure email types are set correctly
+        for email in payload['email_addresses']:
+            if 'type' not in email or not email['type']:
+                email['type'] = 'HOME'
+    
+    # Set primary email address
+    if payload.get('email_addresses') and len(payload['email_addresses']) > 0:
+        payload['primary_email_address'] = payload['email_addresses'][0]['address']
+    else:
+        payload['primary_email_address'] = ""
+    
+    # Ensure addresses is properly formatted
+    if 'addresses' not in payload:
+        # Build address from individual fields if provided
+        address = {}
+        if payload.get('street_address'):
+            address['street_address'] = payload.pop('street_address')
+        else:
+            address['street_address'] = ""
+        
+        if payload.get('city'):
+            address['city'] = payload.pop('city')
+        else:
+            address['city'] = ""
+        
+        if payload.get('state_address'):
+            address['state'] = payload.pop('state_address')
+        else:
+            address['state'] = ""
+        
+        if payload.get('postal_code'):
+            address['postal_code'] = payload.pop('postal_code')
+        else:
+            address['postal_code'] = ""
+        
+        if payload.get('country_code'):
+            address['country_code'] = payload.pop('country_code')
+        else:
+            address['country_code'] = ""
+        
+        address['type'] = 'HOME'
+        payload['addresses'] = [address]
+    else:
+        # Ensure address types are set correctly
+        for address in payload['addresses']:
+            if 'type' not in address or not address['type']:
+                address['type'] = 'HOME'
+    
+    # Set opt-ins to true for SMS and email by default for new patients
+    if 'opt_ins' not in payload:
+        payload['opt_ins'] = {
+            "sms": True,
+            "email": True
+        }
+    
+    # Set first_visit to appointment date for new patients
+    if appointment_date and 'first_visit' not in payload:
+        payload['first_visit'] = appointment_date
+    
+    # Handle preferred provider
+    if 'preferred_provider' in payload:
+        preferred_provider = payload.pop('preferred_provider')  # Remove from payload to process separately
+    else:
+        preferred_provider = {
+            "name": "resources/provider_001",
+            "remote_id": "001", 
+            "type": "PROVIDER",
+            "display_name": ""
+        }
+    
+    # Handle preferred hygienist in additional_data
+    additional_data = payload.get('additional_data', {})
+    
+    # Set preferred hygienist - always include this field
+    if payload.get('preferred_hygienist_id'):
+        hygienist_id = payload.pop('preferred_hygienist_id')
+        hygienist_name = payload.pop('preferred_hygienist_name', f"resources/provider_{hygienist_id}")
+        additional_data.update({
+            "preferred_hygienist_id": hygienist_id,
+            "preferred_hygienist_name": hygienist_name,
+            "preferred_hygienist_type": "PROVIDER"
+        })
+    else:
+        # Default to HO4 as preferred hygienist (matching your example)
+        additional_data.update({
+            "preferred_hygienist_id": "HO4",
+            "preferred_hygienist_name": "resources/provider_HO4",
+            "preferred_hygienist_type": "PROVIDER"
+        })
+    
+    payload['additional_data'] = additional_data
+    
+    # Clean up individual fields that are now in structured format
+    fields_to_clean = ['number', 'email']
+    for field in fields_to_clean:
+        payload.pop(field, None)
     
     print(f"Creating contact with payload: {json.dumps(payload, indent=2)}")
     
@@ -236,7 +351,13 @@ def create_kolla_contact(contact_info: dict) -> Optional[str]:
         print(f"Contact creation response: {response.status_code}, {response.text}")
         
         if response.status_code in (200, 201):
-            return response.json().get('name')
+            contact_id = response.json().get('name')
+            
+            # After successful contact creation, update with preferred_provider
+            if contact_id and preferred_provider:
+                update_contact_preferred_provider(contact_id, preferred_provider)
+            
+            return contact_id
         else:
             print(f"Contact creation failed with status {response.status_code}")
             return None
@@ -247,6 +368,22 @@ def create_kolla_contact(contact_info: dict) -> Optional[str]:
     except Exception as e:
         print(f"Error creating contact: {e}")
         return None
+
+def update_contact_preferred_provider(contact_id: str, preferred_provider: dict):
+    """Update contact with preferred provider after creation"""
+    try:
+        url = f"{KOLLA_BASE_URL}/contacts/{contact_id}"
+        payload = {
+            "preferred_provider": preferred_provider
+        }
+        
+        response = requests.patch(url, headers=KOLLA_HEADERS, data=json.dumps(payload), timeout=10)
+        if response.status_code in (200, 201):
+            print(f"✅ Updated preferred provider for contact {contact_id}")
+        else:
+            print(f"⚠️ Failed to update preferred provider: {response.status_code}, {response.text}")
+    except Exception as e:
+        print(f"⚠️ Error updating preferred provider: {e}")
 
 def get_kolla_resources():
     """Fetch all resources from Kolla and return as a list."""
@@ -418,17 +555,22 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         if 'type' not in contact_info:
             contact_info['type'] = 'PATIENT'
         
-        # Remove first_visit as it can cause timeout issues
-        contact_info.pop('first_visit', None)
-
-        # Remove problematic fields that shouldn't be sent during creation
-        problematic_fields = ['guarantor', 'preferred_provider']
-        for field in problematic_fields:
-            contact_info.pop(field, None)
+        # Set default gender if not provided
+        if 'gender' not in contact_info or not contact_info['gender']:
+            contact_info['gender'] = 'GENDER_UNSPECIFIED'
+        
+        # Set default preferred provider
+        if 'preferred_provider' not in contact_info:
+            contact_info['preferred_provider'] = {
+                "name": "resources/provider_001",
+                "remote_id": "001",
+                "type": "PROVIDER", 
+                "display_name": ""
+            }
 
         # Since this is always a new patient, create a new contact directly
         print(f"   Creating new patient contact in Kolla...")
-        contact_id = create_kolla_contact(contact_info)
+        contact_id = create_kolla_contact(contact_info, request.date)
         if not contact_id:
             return {
                 "success": False,
