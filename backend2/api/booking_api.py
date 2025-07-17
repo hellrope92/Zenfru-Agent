@@ -181,6 +181,51 @@ def parse_contact_info(contact_data: Union[str, Dict[str, Any]]) -> Dict[str, st
     else:
         return {"phone": "", "email": ""}
 
+def find_existing_contact_by_phone(phone_number: str) -> Optional[str]:
+    """Find existing contact by phone number using Kolla filter, return contact_id if found."""
+    if not phone_number:
+        return None
+    
+    # Clean phone number (remove spaces, dashes, parentheses)
+    clean_phone = ''.join(filter(str.isdigit, phone_number))
+    
+    try:
+        # Use Kolla filter API like in get_contact_api.py
+        contacts_url = f"{KOLLA_BASE_URL}/contacts?filter=phone=%27{clean_phone}%27"
+        
+        print(f"🔍 Searching for existing contact with phone: {phone_number} (cleaned: {clean_phone})")
+        print(f"📞 Calling Kolla API: {contacts_url}")
+        
+        response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=30)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            contacts_data = response.json()
+            contacts = contacts_data.get('contacts', [])
+            
+            print(f"   ✅ Found {len(contacts)} contacts matching phone filter")
+            
+            if contacts:
+                # Return the first matching contact's ID
+                contact = contacts[0]
+                contact_id = contact.get('name')
+                contact_name = f"{contact.get('given_name', '')} {contact.get('family_name', '')}".strip()
+                print(f"   📋 Found existing contact: {contact_name} (ID: {contact_id}) with phone: {clean_phone}")
+                return contact_id
+            else:
+                print(f"   ❌ No existing contact found with phone: {phone_number}")
+                return None
+        else:
+            print(f"   ❌ API Error: {response.status_code}, {response.text}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print("   ❌ Contact search timed out")
+        return None
+    except Exception as e:
+        print(f"   ❌ Error searching for existing contact: {e}")
+        return None
+
 def convert_time_to_datetime(date_str: str, time_str: str) -> datetime:
     """Convert date and time strings to datetime object"""
     try:
@@ -212,6 +257,8 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
     url = f"{KOLLA_BASE_URL}/contacts"
     payload = contact_info.copy()
     
+    print(f"📋 Input contact_info: {json.dumps(contact_info, indent=2)}")
+    
     # Kolla expects 'name' to be a unique resource string, so omit it on create
     payload.pop('name', None)
     
@@ -220,26 +267,47 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
     for field in fields_to_remove:
         payload.pop(field, None)
     
-    # Set default required fields for Kolla contact creation
-    if 'state' not in payload:
-        payload['state'] = 'ACTIVE'
-    if 'type' not in payload:
-        payload['type'] = 'PATIENT'
+    # Set default required fields for Kolla contact creation (do this FIRST to avoid conflicts)
+    payload['state'] = 'ACTIVE'  # Contact state (always ACTIVE)
+    payload['type'] = 'PATIENT'  # Contact type (always PATIENT)
     
-    # Set gender to GENDER_UNSPECIFIED if not provided
+    # Set gender - handle various input formats
+    print(f"👤 Processing gender: '{payload.get('gender', 'NOT_FOUND')}'")
     if 'gender' not in payload or not payload['gender']:
         payload['gender'] = 'GENDER_UNSPECIFIED'
+        print(f"   ➜ Set to default: GENDER_UNSPECIFIED")
+    else:
+        # Normalize gender values to match Kolla's expected format
+        gender_value = str(payload['gender']).upper()
+        print(f"   ➜ Normalized to: {gender_value}")
+        valid_genders = ['MALE', 'FEMALE', 'OTHER', 'GENDER_UNSPECIFIED']
+        if gender_value in ['M', 'MALE']:
+            payload['gender'] = 'MALE'
+            print(f"   ➜ Final: MALE")
+        elif gender_value in ['F', 'FEMALE']:
+            payload['gender'] = 'FEMALE'
+            print(f"   ➜ Final: FEMALE")
+        elif gender_value not in valid_genders:
+            payload['gender'] = 'GENDER_UNSPECIFIED'
+            print(f"   ➜ Invalid, set to: GENDER_UNSPECIFIED")
+        else:
+            print(f"   ➜ Final: {payload['gender']}")
     
     # Ensure phone_numbers is properly formatted
     if 'phone_numbers' not in payload and payload.get('number'):
-        payload['phone_numbers'] = [{"number": payload['number'], "type": "MOBILE"}]
+        # Clean the phone number for storage (Kolla stores without formatting)
+        clean_number = ''.join(filter(str.isdigit, payload['number']))
+        payload['phone_numbers'] = [{"number": clean_number, "type": "MOBILE"}]
     elif 'phone_numbers' in payload:
-        # Ensure phone types are set correctly
+        # Ensure phone types are set correctly and clean phone numbers
         for phone in payload['phone_numbers']:
             if 'type' not in phone or not phone['type']:
                 phone['type'] = 'MOBILE'
+            # Clean phone number for consistent storage
+            if 'number' in phone:
+                phone['number'] = ''.join(filter(str.isdigit, phone['number']))
     
-    # Set primary phone number
+    # Set primary phone number (cleaned)
     if payload.get('phone_numbers') and len(payload['phone_numbers']) > 0:
         payload['primary_phone_number'] = payload['phone_numbers'][0]['number']
     
@@ -258,42 +326,44 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
     else:
         payload['primary_email_address'] = ""
     
-    # Ensure addresses is properly formatted
+    # Ensure addresses is properly formatted with better defaults
     if 'addresses' not in payload:
-        # Build address from individual fields if provided
-        address = {}
-        if payload.get('street_address'):
-            address['street_address'] = payload.pop('street_address')
-        else:
-            address['street_address'] = ""
+        # Build address from individual fields if provided, with proper defaults
+        has_address_fields = any(payload.get(field) for field in ['street_address', 'city', 'state_address', 'postal_code', 'country_code'])
         
-        if payload.get('city'):
-            address['city'] = payload.pop('city')
+        if has_address_fields:
+            print(f"🏠 Building address from individual fields...")
+            print(f"   street_address: '{payload.get('street_address', '')}'")
+            print(f"   city: '{payload.get('city', '')}'")
+            print(f"   state_address: '{payload.get('state_address', '')}'")
+            print(f"   postal_code: '{payload.get('postal_code', '')}'")
         else:
-            address['city'] = ""
+            print(f"🏠 No address fields provided, creating empty address")
         
-        if payload.get('state_address'):
-            address['state'] = payload.pop('state_address')
-        else:
-            address['state'] = ""
+        address = {
+            "street_address": payload.pop('street_address', ""),
+            "city": payload.pop('city', ""),
+            "state": payload.pop('state_address', ""),
+            "postal_code": payload.pop('postal_code', ""),
+            "country_code": payload.pop('country_code', ""),
+            "type": "HOME"
+        }
         
-        if payload.get('postal_code'):
-            address['postal_code'] = payload.pop('postal_code')
-        else:
-            address['postal_code'] = ""
+        if has_address_fields:
+            print(f"   📋 Final address object: {address}")
         
-        if payload.get('country_code'):
-            address['country_code'] = payload.pop('country_code')
-        else:
-            address['country_code'] = ""
-        
-        address['type'] = 'HOME'
         payload['addresses'] = [address]
     else:
-        # Ensure address types are set correctly
+        # Ensure address types are set correctly and all required fields exist
         for address in payload['addresses']:
             if 'type' not in address or not address['type']:
                 address['type'] = 'HOME'
+            # Ensure all address fields exist
+            address.setdefault('street_address', '')
+            address.setdefault('city', '')
+            address.setdefault('state', '')
+            address.setdefault('postal_code', '')
+            address.setdefault('country_code', '')
     
     # Set opt-ins to true for SMS and email by default for new patients
     if 'opt_ins' not in payload:
@@ -325,8 +395,8 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
         hygienist_id = payload.pop('preferred_hygienist_id')
         hygienist_name = payload.pop('preferred_hygienist_name', f"resources/provider_{hygienist_id}")
         additional_data.update({
-            "preferred_hygienist_id": hygienist_id,
-            "preferred_hygienist_name": hygienist_name,
+            "preferred_hygienist_id": "H04",
+            "preferred_hygienist_name": "resources/provider_HO4",
             "preferred_hygienist_type": "PROVIDER"
         })
     else:
@@ -549,13 +619,38 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         if request.dob and 'birth_date' not in contact_info:
             contact_info['birth_date'] = request.dob
 
-        # Set default required fields for Kolla
-        if 'state' not in contact_info:
-            contact_info['state'] = 'ACTIVE'
-        if 'type' not in contact_info:
-            contact_info['type'] = 'PATIENT'
+        # Extract address fields from request if provided
+        address_fields = ['street_address', 'city', 'postal_code', 'country_code']
+        print(f"🏠 Extracting address fields from request...")
+        for field in address_fields:
+            has_field = hasattr(request, field)
+            field_value = getattr(request, field, 'NOT_FOUND') if has_field else 'NOT_FOUND'
+            print(f"   {field}: hasattr={has_field}, value='{field_value}'")
+            if hasattr(request, field) and getattr(request, field) is not None:
+                contact_info[field] = getattr(request, field)
+                print(f"   ✅ Added {field} = '{getattr(request, field)}'")
         
-        # Set default gender if not provided
+        # Handle address state field separately to avoid conflict with contact state
+        has_state = hasattr(request, 'state')
+        state_value = getattr(request, 'state', 'NOT_FOUND') if has_state else 'NOT_FOUND'
+        print(f"   state: hasattr={has_state}, value='{state_value}'")
+        if hasattr(request, 'state') and request.state is not None:
+            contact_info['state_address'] = request.state  # Address state (e.g., "NJ")
+            print(f"   ✅ Added state_address = '{request.state}'")
+        
+        # Extract gender from request if provided
+        has_gender = hasattr(request, 'gender')
+        gender_value = getattr(request, 'gender', 'NOT_FOUND') if has_gender else 'NOT_FOUND'
+        print(f"👤 Extracting gender: hasattr={has_gender}, value='{gender_value}'")
+        if hasattr(request, 'gender') and request.gender is not None:
+            contact_info['gender'] = request.gender
+            print(f"   ✅ Added gender = '{request.gender}'")
+
+        # Set required Kolla contact fields (these are different from address fields)
+        contact_info['state'] = 'ACTIVE'  # Contact status (always ACTIVE for new patients)
+        contact_info['type'] = 'PATIENT'  # Contact type
+        
+        # Set default gender ONLY if not already provided
         if 'gender' not in contact_info or not contact_info['gender']:
             contact_info['gender'] = 'GENDER_UNSPECIFIED'
         
@@ -568,16 +663,40 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "display_name": ""
             }
 
-        # Since this is always a new patient, create a new contact directly
-        print(f"   Creating new patient contact in Kolla...")
-        contact_id = create_kolla_contact(contact_info, request.date)
+        # Check if contact already exists by phone number before creating new one
+        contact_id = None
+        phone_number = None
+        is_new_contact = False
+        
+        # Extract phone number from contact info
+        if 'phone_numbers' in contact_info and contact_info['phone_numbers']:
+            phone_number = contact_info['phone_numbers'][0].get('number', '')
+        elif 'number' in contact_info:
+            phone_number = contact_info['number']
+        elif isinstance(request.contact, str):
+            phone_number = request.contact
+        elif isinstance(request.contact, dict):
+            phone_number = request.contact.get('number') or request.contact.get('phone_number')
+        
+        if phone_number:
+            print(f"🔍 Checking for existing contact with phone: {phone_number}")
+            contact_id = find_existing_contact_by_phone(phone_number)
+        
+        # Create new contact only if one doesn't exist
         if not contact_id:
-            return {
-                "success": False,
-                "message": "Failed to create new patient contact in Kolla.",
-                "status": "error",
-                "error": "contact_creation_failed"
-            }
+            print(f"   Creating new patient contact in Kolla...")
+            contact_id = create_kolla_contact(contact_info, request.date)
+            is_new_contact = True
+            if not contact_id:
+                return {
+                    "success": False,
+                    "message": "Failed to create new patient contact in Kolla.",
+                    "status": "error",
+                    "error": "contact_creation_failed"
+                }
+        else:
+            print(f"   Using existing contact: {contact_id}")
+            is_new_contact = False
 
         # 2. Prepare appointment data for Kolla
         try:
@@ -851,17 +970,24 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 details={
                     "date": request.date,
                     "time": request.time,
-                    "is_new_patient": True,
+                    "is_new_patient": request.is_new_patient,
+                    "is_new_contact": is_new_contact,
                     "day": request.day,
                     "contact_id": contact_id
                 }
             )
             
+            # Create appropriate success message based on whether contact was new or existing
+            if is_new_contact:
+                success_message = f"New patient appointment successfully booked for {request.name}"
+            else:
+                success_message = f"Appointment successfully booked for existing patient {request.name}"
+            
             return {
                 "success": True,
                 "appointment_id": appointment_id,
                 "contact_id": contact_id,
-                "message": f"New patient appointment successfully booked for {request.name}",
+                "message": success_message,
                 "status": "confirmed",
                 "appointment_details": {
                     "name": request.name,
@@ -871,7 +997,8 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     "doctor": request.doctor_for_appointment,
                     "duration_minutes": service_duration,
                     "contact_id": contact_id,
-                    "is_new_patient": True
+                    "is_new_patient": request.is_new_patient,
+                    "is_new_contact": is_new_contact
                 }
             }
         else:
@@ -889,7 +1016,8 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 details={
                     "date": request.date,
                     "time": request.time,
-                    "is_new_patient": True,
+                    "is_new_patient": request.is_new_patient,
+                    "is_new_contact": is_new_contact,
                     "day": request.day,
                     "status_code": response.status_code
                 }
@@ -904,6 +1032,12 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
     except Exception as e:
         print(f"   ❌ Error booking appointment: {e}")
         
+        # Determine if is_new_contact variable exists in scope for error logging
+        try:
+            is_new_contact_for_error = is_new_contact
+        except NameError:
+            is_new_contact_for_error = None
+        
         # Log failed booking interaction due to exception
         patient_logger.log_interaction(
             interaction_type="booking",
@@ -916,7 +1050,8 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             details={
                 "date": request.date,
                 "time": request.time,
-                "is_new_patient": True,
+                "is_new_patient": request.is_new_patient,
+                "is_new_contact": is_new_contact_for_error,
                 "day": request.day,
                 "error_type": "exception"
             }

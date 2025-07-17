@@ -49,6 +49,14 @@ class BookAppointmentRequest(BaseModel):
     operatory: Optional[str] = None  # Operatory room for the appointment
     slots_needed: Optional[int] = 1  # Number of time slots needed (1 = 30 min, 2 = 1 hour, etc.)
     iscleaning: Optional[bool] = False  # True for hygienist appointments (cleaning), False for doctor appointments
+    # Address fields (can be provided directly in request)
+    street_address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None  # Address state (e.g., "NJ")
+    postal_code: Optional[str] = None
+    country_code: Optional[str] = None
+    # Personal information fields
+    gender: Optional[str] = None  # e.g., 'MALE', 'FEMALE', 'GENDER_UNSPECIFIED'
 
 class CheckSlotsRequest(BaseModel):
     day: str

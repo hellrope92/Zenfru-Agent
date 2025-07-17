@@ -47,9 +47,7 @@ async def get_contact(request: GetContactRequest):
         # Use Kolla API filter to search for contacts by phone number
         contact_info = await fetch_contact_by_phone_filter(normalized_phone)
         
-        if not contact_info:
-            logger.warning(f"No contact information found for phone: {request.phone}")
-            raise HTTPException(status_code=404, detail="No contact found for specified patient")
+        if contact_info:
             patient_name = f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip()
             
             return {
@@ -61,14 +59,8 @@ async def get_contact(request: GetContactRequest):
                 "source": "kolla_api_filter"
             }
         else:
-            return {
-                "success": False,
-                "message": "No contact information found for the specified patient",
-                "patient_phone": request.phone,
-                "patient_name": getattr(request, 'name', ''),
-                "patient_dob": getattr(request, 'dob', ''),
-                "contact_info": None
-            }
+            logger.warning(f"No contact information found for phone: {request.phone}")
+            raise HTTPException(status_code=404, detail="No contact found for specified patient")
         
     except HTTPException:
         raise
@@ -79,19 +71,19 @@ async def get_contact(request: GetContactRequest):
 async def fetch_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
     """Fetch contact information from Kolla API using phone filter"""
     try:
-        contacts_url = f"{KOLLA_BASE_URL}/contacts"
+        contacts_url = f"{KOLLA_BASE_URL}/contacts?filter=phone=%27{patient_phone}%27"
         
         # Build filter for phone number search
         # Phone number is already normalized (e.g., "5551234567")
-        filter_query = f"type='PATIENT' AND state='ACTIVE' AND phone='{patient_phone}'"
+        # filter_query = f"phone=%27{patient_phone}%27"
         
-        params = {"filter": filter_query}
+        # params = {"filter": filter_query}
         
-        print(f"📞 Calling Kolla API: {contacts_url}")
-        print(f"   Filter: {filter_query}")
-        print(f"   Normalized phone: {patient_phone}")
+        # print(f"📞 Calling Kolla API: {contacts_url}")
+        # print(f"   Filter: {filter_query}")
+        # print(f"   Normalized phone: {patient_phone}")
         
-        response = requests.get(contacts_url, headers=KOLLA_HEADERS, params=params, timeout=10)
+        response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
         print(f"   Response Status: {response.status_code}")
         
         if response.status_code != 200:
