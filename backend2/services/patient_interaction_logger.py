@@ -18,8 +18,8 @@ from .local_cache_service import LocalCacheService
 # Optional email imports - make email functionality optional
 try:
     import smtplib
-    from email.mime.text import MimeText
-    from email.mime.multipart import MimeMultipart
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
     import schedule
     EMAIL_AVAILABLE = True
 except ImportError:
@@ -37,6 +37,7 @@ class PatientInteractionLogger:
         self.config_file = Path(config_file)
         self.config = self._load_config()
         self.cache_service = LocalCacheService()  # Initialize cache service
+        self.last_report_sent_date = None  # Track last report sent to prevent duplicates
         self._setup_daily_scheduler()
         
     def _load_config(self) -> Dict[str, Any]:
@@ -85,23 +86,44 @@ class PatientInteractionLogger:
         return default_config
     
     def _setup_daily_scheduler(self):
-        """Setup the daily report scheduler"""
+        """Setup the daily report scheduler with timezone awareness"""
         if not EMAIL_AVAILABLE:
             print("📅 Daily report scheduler disabled - email functionality not available")
             return
             
-        report_time = self.config["reporting"]["daily_email_time"]
-        schedule.every().day.at(report_time).do(self._generate_and_send_daily_report)
+        # Import pytz for timezone handling
+        import pytz
         
-        # Start scheduler in a separate thread
+        # Get timezone from config, default to Eastern
+        timezone_str = self.config["reporting"].get("timezone", "US/Eastern")
+        report_time = self.config["reporting"]["daily_email_time"]
+        
+        # Create a timezone-aware scheduler function
+        def timezone_aware_scheduler():
+            tz = pytz.timezone(timezone_str)
+            now = datetime.now(tz)
+            target_hour, target_minute = map(int, report_time.split(":"))
+            today = now.date()
+            
+            # Check if it's the right time (with a 1-minute window) and not already sent today
+            if (now.hour == target_hour and now.minute == target_minute and 
+                self.last_report_sent_date != today):
+                print(f"⏰ Triggering daily report at {now.strftime('%Y-%m-%d %I:%M %p %Z')}")
+                self._generate_and_send_daily_report()
+                self.last_report_sent_date = today
+        
+        # Start scheduler in a separate thread that checks every minute
         def run_scheduler():
             while True:
-                schedule.run_pending()
+                try:
+                    timezone_aware_scheduler()
+                except Exception as e:
+                    print(f"❌ Error in scheduler: {e}")
                 time.sleep(60)  # Check every minute
         
         scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
         scheduler_thread.start()
-        print(f"📅 Daily report scheduler started - reports will be sent at {report_time}")
+        print(f"📅 Daily report scheduler started - reports will be sent at {report_time} {timezone_str}")
     
     def _fetch_appointment_details(self, appointment_id: str) -> Dict[str, Optional[str]]:
         """
@@ -234,8 +256,8 @@ class PatientInteractionLogger:
             service_type = service_type or appointment_details["service_type"]
             doctor = doctor or appointment_details["doctor"]
         
-        # Sanitize contact number for privacy in logs
-        sanitized_contact = self._sanitize_contact(contact_number) if contact_number else None
+        # Store full contact number in logs (no sanitization)
+        # Sanitization can be done later if needed for specific purposes
         
         log_entry = {
             "interaction_id": interaction_id,
@@ -244,7 +266,7 @@ class PatientInteractionLogger:
             "time": timestamp.time().isoformat(),
             "interaction_type": interaction_type,
             "patient_name": patient_name,
-            "contact_number": sanitized_contact,
+            "contact_number": contact_number,  # Store full contact number
             "success": success,
             "appointment_id": appointment_id,
             "service_type": service_type,
@@ -260,10 +282,10 @@ class PatientInteractionLogger:
         return interaction_id
     
     def _sanitize_contact(self, contact_number: str) -> str:
-        """Sanitize contact number for privacy (show only last 4 digits)"""
-        if not contact_number or len(contact_number) < 4:
-            return "****"
-        return "*" * (len(contact_number) - 4) + contact_number[-4:]
+        """Return full contact number for clinic reports (no sanitization needed)"""
+        if not contact_number:
+            return "N/A"
+        return contact_number
     
     def _save_to_daily_log(self, log_entry: Dict[str, Any], log_date: date):
         """Save log entry to daily log file"""
@@ -667,9 +689,18 @@ class PatientInteractionLogger:
         return html
     
     def _generate_and_send_daily_report(self):
-        """Generate and send daily report via email"""
+        """Generate and send daily report via email (timezone-aware)"""
         try:
-            yesterday = date.today() - timedelta(days=1)
+            import pytz
+            
+            # Get timezone from config, default to Eastern
+            timezone_str = self.config["reporting"].get("timezone", "US/Eastern")
+            tz = pytz.timezone(timezone_str)
+            
+            # Use timezone-aware date calculation
+            now = datetime.now(tz)
+            yesterday = now.date() - timedelta(days=1)
+            
             html_report = self.generate_daily_report(yesterday)
             
             # Save report to file
@@ -680,6 +711,7 @@ class PatientInteractionLogger:
             # Send email if configured and available
             if EMAIL_AVAILABLE and self.config["email"]["recipients"] and self.config["email"]["username"]:
                 self._send_email_report(html_report, yesterday)
+                print(f"📧 Daily report sent at {now.strftime('%Y-%m-%d %I:%M %p %Z')} for {yesterday}")
             else:
                 print(f"📧 Daily report generated but email not configured/available: {report_file}")
                 
@@ -695,13 +727,13 @@ class PatientInteractionLogger:
             return
             
         try:
-            msg = MimeMultipart('alternative')
+            msg = MIMEMultipart('alternative')
             msg['Subject'] = f"Daily Patient Interactions Report - {report_date.strftime('%B %d, %Y')}"
             msg['From'] = f"{self.config['email']['sender_name']} <{self.config['email']['username']}>"
             msg['To'] = ", ".join(self.config["email"]["recipients"])
             
             # Attach HTML report
-            html_part = MimeText(html_report, 'html')
+            html_part = MIMEText(html_report, 'html')
             msg.attach(html_part)
             
             # Send email
@@ -728,7 +760,7 @@ class PatientInteractionLogger:
             if not self.config["fallback"]["backup_email"]:
                 return
                 
-            msg = MimeText(f"Daily report generation failed with error: {error_message}")
+            msg = MIMEText(f"Daily report generation failed with error: {error_message}")
             msg['Subject'] = "Daily Report Generation Failed"
             msg['From'] = self.config["email"]["username"]
             msg['To'] = self.config["fallback"]["backup_email"]
@@ -743,8 +775,15 @@ class PatientInteractionLogger:
             print(f"❌ Error sending fallback notification: {e}")
     
     def update_config(self, new_config: Dict[str, Any]):
-        """Update configuration settings"""
-        self.config.update(new_config)
+        """Update configuration settings with deep merge"""
+        def deep_merge(target, source):
+            for key, value in source.items():
+                if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+                    deep_merge(target[key], value)
+                else:
+                    target[key] = value
+        
+        deep_merge(self.config, new_config)
         with open(self.config_file, 'w') as f:
             json.dump(self.config, f, indent=2)
         print("📝 Configuration updated successfully")

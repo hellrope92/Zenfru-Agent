@@ -1,17 +1,22 @@
 {
   "email": {
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "use_tls": true,
     "username": "kay@zenfru.com",
     "password": "lmep clnw bond khwr",
     "recipients": [
       "monilmehta5@gmail.com",
       "karanissar@gmail.com"
     ],
-    "smtp_server": "smtp.gmail.com",
-    "smtp_port": 587
+    "sender_name": "Zenfru AI Assistant"
   },
   "reporting": {
     "daily_email_time": "08:00",
-    "include_patient_details": true
+    "timezone": "US/Eastern",
+    "include_patient_details": true,
+    "include_statistics": true,
+    "max_retries": 3
   },
   "fallback": {
     "backup_email": "",

@@ -13,6 +13,10 @@ from email.mime.multipart import MIMEMultipart
 import pytz
 import shutil
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 router = APIRouter(prefix="/api", tags=["reporting"])
 
@@ -30,7 +34,7 @@ class ReportingConfigRequest(BaseModel):
 class ManualReportRequest(BaseModel):
     """Request model for generating manual reports"""
     target_date: Optional[str] = None  # YYYY-MM-DD format
-    send_email: Optional[bool] = False
+    send_email: Optional[bool] = True  # Default to True instead of False
 
 @router.post("/configure_reporting")
 async def configure_reporting(request: ReportingConfigRequest):
@@ -99,7 +103,7 @@ async def get_reporting_config():
 async def generate_manual_report(request: ManualReportRequest):
     """Generate a manual daily report"""
     try:
-        # Parse target date
+        # Parse target date - default to previous day
         target_date = None
         if request.target_date:
             try:
@@ -107,12 +111,13 @@ async def generate_manual_report(request: ManualReportRequest):
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         else:
-            target_date = date.today()
+            # Default to previous day instead of today
+            target_date = date.today() - timedelta(days=1)
         
         # Generate HTML report
         html_report = patient_logger.generate_daily_report(target_date)
         
-        # Optionally send email
+        # Send email by default (can be disabled by setting send_email to False)
         if request.send_email:
             try:
                 patient_logger._send_email_report(html_report, target_date)
@@ -120,7 +125,7 @@ async def generate_manual_report(request: ManualReportRequest):
             except Exception as e:
                 email_status = f"Email failed: {str(e)}"
         else:
-            email_status = "Email not requested"
+            email_status = "Email sending disabled by request"
         
         # Save report to file
         report_filename = f"manual_report_{target_date.strftime('%Y_%m_%d')}_{datetime.now().strftime('%H%M%S')}.html"
@@ -280,8 +285,6 @@ async def list_log_files():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing log files: {str(e)}")
 
-import os
-
 # Load config from environment variables
 EMAIL_USERNAME = os.getenv("EMAIL_USERNAME")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
@@ -298,10 +301,13 @@ patient_logger.update_config({
         "password": EMAIL_PASSWORD,
         "recipients": recipients_list,
         "smtp_server": EMAIL_SMTP_SERVER,
-        "smtp_port": int(EMAIL_SMTP_PORT) if EMAIL_SMTP_PORT else 587
+        "smtp_port": int(EMAIL_SMTP_PORT) if EMAIL_SMTP_PORT else 587,
+        "use_tls": True,
+        "sender_name": "Zenfru AI Assistant"
     },
     "reporting": {
-        "daily_email_time": "08:00",  # US morning
+        "daily_email_time": "08:00",  # 8 AM Eastern Time (New Jersey)
+        "timezone": "US/Eastern",
         "include_patient_details": True
     }
 })
