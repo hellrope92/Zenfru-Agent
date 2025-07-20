@@ -331,21 +331,13 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
         # Build address from individual fields if provided, with proper defaults
         has_address_fields = any(payload.get(field) for field in ['street_address', 'city', 'state_address', 'postal_code', 'country_code'])
         
-        if has_address_fields:
-            print(f"🏠 Building address from individual fields...")
-            print(f"   street_address: '{payload.get('street_address', '')}'")
-            print(f"   city: '{payload.get('city', '')}'")
-            print(f"   state_address: '{payload.get('state_address', '')}'")
-            print(f"   postal_code: '{payload.get('postal_code', '')}'")
-        else:
-            print(f"🏠 No address fields provided, creating empty address")
-        
+
         address = {
             "street_address": payload.pop('street_address', ""),
             "city": payload.pop('city', ""),
-            "state": payload.pop('state_address', ""),
+            "state": payload.pop('state_address', "NJ"),
             "postal_code": payload.pop('postal_code', ""),
-            "country_code": payload.pop('country_code', ""),
+            "country_code": payload.pop('country_code', "US"),
             "type": "HOME"
         }
         
@@ -619,36 +611,30 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         if request.dob and 'birth_date' not in contact_info:
             contact_info['birth_date'] = request.dob
 
-        # Extract address fields from request if provided
+        # Extract address fields from request if provided, and they are not already in contact_info
         address_fields = ['street_address', 'city', 'postal_code', 'country_code']
         print(f"🏠 Extracting address fields from request...")
         for field in address_fields:
-            has_field = hasattr(request, field)
-            field_value = getattr(request, field, 'NOT_FOUND') if has_field else 'NOT_FOUND'
-            print(f"   {field}: hasattr={has_field}, value='{field_value}'")
-            if hasattr(request, field) and getattr(request, field) is not None:
+            if hasattr(request, field) and getattr(request, field) is not None and field not in contact_info:
                 contact_info[field] = getattr(request, field)
-                print(f"   ✅ Added {field} = '{getattr(request, field)}'")
+                print(f"   ✅ Added {field} = '{getattr(request, field)}' from request root")
         
         # Handle address state field separately to avoid conflict with contact state
-        has_state = hasattr(request, 'state')
-        state_value = getattr(request, 'state', 'NOT_FOUND') if has_state else 'NOT_FOUND'
-        print(f"   state: hasattr={has_state}, value='{state_value}'")
-        if hasattr(request, 'state') and request.state is not None:
+        if hasattr(request, 'state') and request.state is not None and 'state_address' not in contact_info:
             contact_info['state_address'] = request.state  # Address state (e.g., "NJ")
-            print(f"   ✅ Added state_address = '{request.state}'")
+            print(f"   ✅ Added state_address = '{request.state}' from request root")
+        elif hasattr(request, 'state_address') and request.state_address is not None and 'state_address' not in contact_info:
+             contact_info['state_address'] = request.state_address
+             print(f"   ✅ Added state_address = '{request.state_address}' from request root")
         
-        # Extract gender from request if provided
-        has_gender = hasattr(request, 'gender')
-        gender_value = getattr(request, 'gender', 'NOT_FOUND') if has_gender else 'NOT_FOUND'
-        print(f"👤 Extracting gender: hasattr={has_gender}, value='{gender_value}'")
-        if hasattr(request, 'gender') and request.gender is not None:
+        # Extract gender from request if provided and not in contact_info
+        if hasattr(request, 'gender') and request.gender is not None and 'gender' not in contact_info:
             contact_info['gender'] = request.gender
-            print(f"   ✅ Added gender = '{request.gender}'")
+            print(f"   ✅ Added gender = '{request.gender}' from request root")
 
         # Set required Kolla contact fields (these are different from address fields)
-        contact_info['state'] = 'ACTIVE'  # Contact status (always ACTIVE for new patients)
-        contact_info['type'] = 'PATIENT'  # Contact type
+        contact_info.setdefault('state', 'ACTIVE')  # Contact status
+        contact_info.setdefault('type', 'PATIENT')  # Contact type
         
         # Set default gender ONLY if not already provided
         if 'gender' not in contact_info or not contact_info['gender']:
