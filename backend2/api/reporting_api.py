@@ -146,6 +146,49 @@ async def generate_manual_report(request: ManualReportRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
+@router.get("/generate_daily_report")
+async def generate_daily_report_get():
+    """Generate and email a daily report for the current day."""
+    try:
+        target_date = date.today()
+        
+        # Generate HTML report
+        html_report = patient_logger.generate_daily_report(target_date)
+        
+        # Send email
+        email_status = ""
+        try:
+            patient_logger._send_email_report(html_report, target_date)
+            email_status = "Email sent successfully"
+        except Exception as e:
+            email_status = f"Email failed: {str(e)}"
+            # Log the error but don't prevent the response
+            print(f"Error sending email for daily report: {e}")
+
+        # Save report to file
+        report_filename = f"daily_report_{target_date.strftime('%Y_%m_%d')}_{datetime.now().strftime('%H%M%S')}.html"
+        report_path = patient_logger.log_directory / report_filename
+        
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(html_report)
+        
+        response = {
+            "success": True,
+            "message": f"Report generated for {target_date.strftime('%Y-%m-%d')}",
+            "report_date": target_date.strftime('%Y-%m-%d'),
+            "report_file": str(report_path),
+            "email_status": email_status,
+            "report_size": len(html_report)
+        }
+
+        if "failed" in email_status:
+             raise HTTPException(status_code=500, detail=response)
+
+        return response
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+
 @router.get("/interaction_statistics")
 async def get_interaction_statistics(days: Optional[int] = 7):
     """Get interaction statistics for the specified number of days"""
