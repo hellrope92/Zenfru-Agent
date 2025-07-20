@@ -584,7 +584,7 @@ class PatientInteractionLogger:
 <body>
     <div class="container">
         <div class="header">
-            <img src="data:image/png;base64,{logo_data}" alt="Zenfru Logo">
+            <img src="backend2/logo.png" alt="Zenfru Logo">
             <p>Daily Patient Interactions Report {formatted_date}</p>
         </div>
         
@@ -609,7 +609,7 @@ class PatientInteractionLogger:
         # Add peak hour if available
         if stats.get('peak_hour') is not None:
             peak_hour = stats['peak_hour']
-            peak_time = f"{{peak_hour:02d}}:00"
+            peak_time = f"{peak_hour:02d}:00"
             html += f"""
                     <div class="stat-card">
                         <div class="stat-number">{peak_time}</div>
