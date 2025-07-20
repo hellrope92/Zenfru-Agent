@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any, Literal
 from pathlib import Path
 import threading
 import time
+import base64
 
 # Import local cache service to fetch appointment details
 from .local_cache_service import LocalCacheService
@@ -423,13 +424,23 @@ class PatientInteractionLogger:
         # Format date for display
         formatted_date = report_date.strftime("%B %d, %Y")
         
+        # Read and encode logo
+        logo_path = Path(__file__).parent.parent / "logo.png"
+        logo_data = ""
+        if logo_path.exists():
+            try:
+                with open(logo_path, "rb") as f:
+                    logo_data = base64.b64encode(f.read()).decode("utf-8")
+            except Exception as e:
+                print(f"Error reading logo file: {e}")
+
         html = f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Patient Interactions Report - {formatted_date}</title>
+    <title>Daily Patient Interactions Report {formatted_date}</title>
     <style>
         body {{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -449,16 +460,16 @@ class PatientInteractionLogger:
         .header {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px;
+            padding: 20px;
             text-align: center;
+            position: relative;
         }}
-        .header h1 {{
-            margin: 0;
-            font-size: 2.5em;
-            font-weight: 300;
+        .header img {{
+            height: 40px;
+            margin-bottom: 10px;
         }}
         .header p {{
-            margin: 10px 0 0 0;
+            margin: 0;
             font-size: 1.2em;
             opacity: 0.9;
         }}
@@ -515,10 +526,12 @@ class PatientInteractionLogger:
             align-items: center;
         }}
         .category-count {{
-            background: rgba(255, 255, 255, 0.2);
+            background: white;
+            color: #667eea;
             padding: 5px 10px;
             border-radius: 15px;
             font-size: 0.9em;
+            font-weight: 600;
         }}
         .interaction-list {{
             max-height: 400px;
@@ -571,8 +584,8 @@ class PatientInteractionLogger:
 <body>
     <div class="container">
         <div class="header">
-            <h1> Zenfru AI</h1>
-            <p>Daily Patient Interactions Report - {formatted_date}</p>
+            <img src="data:image/png;base64,{logo_data}" alt="Zenfru Logo">
+            <p>Daily Patient Interactions Report {formatted_date}</p>
         </div>
         
         <div class="content">
@@ -596,7 +609,7 @@ class PatientInteractionLogger:
         # Add peak hour if available
         if stats.get('peak_hour') is not None:
             peak_hour = stats['peak_hour']
-            peak_time = f"{peak_hour:02d}:00"
+            peak_time = f"{{peak_hour:02d}}:00"
             html += f"""
                     <div class="stat-card">
                         <div class="stat-number">{peak_time}</div>
