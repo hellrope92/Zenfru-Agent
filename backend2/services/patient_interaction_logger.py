@@ -424,15 +424,8 @@ class PatientInteractionLogger:
         # Format date for display
         formatted_date = report_date.strftime("%B %d, %Y")
         
-        # Read and encode logo
-        logo_path = Path(__file__).parent.parent / "logo.png"
-        logo_data = ""
-        if logo_path.exists():
-            try:
-                with open(logo_path, "rb") as f:
-                    logo_data = base64.b64encode(f.read()).decode("utf-8")
-            except Exception as e:
-                print(f"Error reading logo file: {e}")
+        # Logo URL
+        logo_url = "http://localhost:8000/static/logo.png"
 
         html = f"""
 <!DOCTYPE html>
@@ -584,7 +577,7 @@ class PatientInteractionLogger:
 <body>
     <div class="container">
         <div class="header">
-            <img src="backend2/logo.png" alt="Zenfru Logo">
+            <img src="{logo_url}" alt="Zenfru Logo">
             <p>Daily Patient Interactions Report {formatted_date}</p>
         </div>
         

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Union
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 import os
 from pathlib import Path
@@ -103,6 +104,9 @@ app = FastAPI(
     description="Modular backend using actual JSON files with console logging",
     version="2.0.0"
 )
+
+# Mount the directory containing the logo as a static directory
+app.mount("/static", StaticFiles(directory=Path(__file__).parent), name="static")
 
 # Initialize GetKolla service
 getkolla_service = GetKollaService()
