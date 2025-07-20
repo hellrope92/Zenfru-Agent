@@ -424,8 +424,17 @@ class PatientInteractionLogger:
         # Format date for display
         formatted_date = report_date.strftime("%B %d, %Y")
         
-        # Logo URL
-        logo_url = "http://localhost:8000/static/logo.png"
+        # Logo URL - using base64 to embed the image directly in the HTML
+        logo_path = Path(__file__).parent.parent / "logo.png"
+        logo_url = ""
+        try:
+            with open(logo_path, "rb") as image_file:
+                encoded_logo = base64.b64encode(image_file.read()).decode("utf-8")
+                logo_url = f"data:image/png;base64,{encoded_logo}"
+        except Exception as e:
+            print(f"Error embedding logo: {e}")
+            # Fallback to URL if embedding fails
+            logo_url = "/static/logo.png"
 
         html = f"""
 <!DOCTYPE html>
@@ -525,6 +534,7 @@ class PatientInteractionLogger:
             border-radius: 15px;
             font-size: 0.9em;
             font-weight: 600;
+            margin-left: auto;
         }}
         .interaction-list {{
             max-height: 400px;
