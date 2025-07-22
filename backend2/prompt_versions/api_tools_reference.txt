@@ -1,109 +1,39 @@
 API Tools Reference
 Technical Documentation for Dental Associates of Jersey City
 
-=== AVAILABLE TOOLS AND THEIR PARAMETERS ===
+=== AVAILABLE TOOLS ===
 
 get_current_day():
-- Purpose: To accurately determine the current day of the week and calculate dates
-- Parameters: None
-- Fallback: If this tool encounters an issue, assume the current day is Tuesday
-- Usage: For date calculations and appointment scheduling
+- Purpose: To accurately determine the current day of the week and calculate dates.
 
 check_available_slots(date, is_cleaning=false):
-- Purpose: To query for available appointment times using the API endpoint
-- Parameters: 
-  - date (YYYY-MM-DD format)
-  - is_cleaning (boolean): Set to true for cleaning appointments to get hygienist schedules
-- Endpoint: {{BASE_URL}}/api/availability?date={{DATE}}&is_cleaning={{IS_CLEANING}}
-- Returns: Availability data for the requested date and next 2 days
-- Usage: When calculating appointment dates (e.g., if today is Monday the 21st and user wants Wednesday, calculate as 23rd)
+- Purpose: To query for available appointment times.
 
 get_appointment_details(phone):
-- Purpose: To retrieve existing appointment information for a patient
-- Parameters: 
-  - phone (string): Patient's phone number (normalized)
-- Endpoint: localhost:8000/api/get_appointment
-- Returns: Latest scheduled appointment for that patient
-- Usage: For rescheduling, confirming appointments, or when patients need information about existing bookings
+- Purpose: To retrieve existing appointment information for a patient.
 
 get_contact_details(phone):
-- Purpose: To retrieve existing patient contact information
-- Parameters:
-  - phone (string): Patient's phone number (normalized)
-- Endpoint: localhost:8000/api/get_contact
-- Returns: Stored contact details and patient information
-- Usage: When booking appointments for existing patients to avoid asking for information already on file
+- Purpose: To retrieve existing patient contact information.
 
 book_patient_appointment(appointment_data):
-- Purpose: To secure a new appointment using the updated API structure
-- Parameters: appointment_data (object) - comprehensive patient information
-- Endpoint: {{BASE_URL}}/api/book_patient_appointment
-- Data Structure: See "APPOINTMENT DATA STRUCTURE" section below
-- Usage: Final step in booking process after gathering all patient information
+- Purpose: To secure a new appointment.
 
 reschedule_patient_appointment(appointment_data):
-- Purpose: To efficiently modify an existing appointment
-- Parameters: appointment_data (object) - updated appointment details
-- Process: First use get_appointment_details(phone), then gather reason and new preferred date/time
-- Data Structure: Same comprehensive format as new bookings
-- Usage: After confirming existing appointment and getting new preferred time
+- Purpose: To modify an existing appointment.
 
 confirm_patient_appointment(confirmation_data):
-- Purpose: To confirm a patient's attendance for their scheduled appointment
-- Parameters: confirmation_data (object)
-- Data Structure:
-  {
-    "appointment_id": "[appointment_id from retrieved appointment details]",
-    "notes": "Patient confirmed attendance via phone call"
-  }
-- Usage: When a patient calls to confirm they will attend their appointment
+- Purpose: To confirm a patient's attendance for their scheduled appointment.
 
 send_new_patient_form(contact_number):
-- Purpose: To send comprehensive package of new patient forms
-- Parameters: contact_number (string)
-- Forms Included: registration, medical history, financial policy, general consent, HIPAA acknowledgment, consent to receive text messages
-- Privacy Note: Do not repeat the phone number aloud for privacy
+- Purpose: To send new patient forms to a patient's phone number.
 
 log_callback_request(name, contact, reason, preferred_callback_time):
-- Purpose: To record a request for a callback
-- Parameters:
-  - name (string): Patient's name
-  - contact (string): Contact information
-  - reason (string): Reason for callback
-  - preferred_callback_time (string): When patient prefers to be called back
-- Usage: When clinic is closed or tools repeatedly fail (after 3 attempts)
+- Purpose: To record a request for a callback.
 
 log_conversation_summary():
-- Purpose: To create a log at the conclusion of each conversation
-- Parameters: None (automatically captures conversation context)
-- Required Content: Patient name, primary intent, appointment details if applicable, final outcome
-- Usage: Must be called at the end of every conversation
+- Purpose: To create a log at the conclusion of each conversation.
 
-=== API ENDPOINTS AND DATA STRUCTURES ===
-
-Dynamic Schedule API Response:
-{{BASE_URL}}/api/availability?date={{DATE}}
-
-Response Format:
-{
-  "success": true/false,
-  "requested_date": "YYYY-MM-DD",
-  "availability": {
-    "YYYY-MM-DD": {
-      "date": "YYYY-MM-DD",
-      "day": "Wednesday",
-      "status": "Open" or "Closed",
-      "free_slots": number,
-      "booked_slots": number,
-      "total_slots": number,
-      "available_times": ["10:00 AM", "10:30 AM", "11:00 AM"]
-    }
-  }
-}
-
-Note: If status is "Closed", do not offer appointments for that day and inform caller that clinic is closed.
-
-=== APPOINTMENT DATA STRUCTURE ===
+=== SCHEDULING INFORMATION ===
 
 Available Doctors and Schedules:
 - Dr. Hanna: Mondays 9AM-6PM, Thursdays 9AM-6PM
@@ -115,97 +45,18 @@ Available Hygienists for Cleaning Appointments:
 - Sarah Johnson, RDH
 - Maria Rodriguez, RDH
 
-Complete appointment data format for booking/rescheduling:
+Slot Calculation Guide (each slot = 30 minutes):
+- 1 Slot (30 minutes): Implant consultation, Orthodontic consultation.
+- 2 Slots (1 hour): Routine cleaning/check-up, Dental exam, Simple/Complex filling, Crown preparation, Tooth extraction, Whitening treatment, Emergency visit.
+- 3 Slots (1.5 hours): Implant surgery.
+- 4 Slots (2 hours): Root canal.
 
-{
-  "name": "[Full Name]",
-  "contact": "[Phone Number]",
-  "contact_info": {
-    "number": "[Phone Number]",
-    "email": "[Email Address]",
-    "given_name": "[First Name]",
-    "family_name": "[Last Name]",
-    "gender": "[GENDER_MALE/GENDER_FEMALE]",
-    "birth_date": "[YYYY-MM-DD format]",
-    "notes": "[Any special notes or preferences]",
-    "addresses": [
-      {
-        "street_address": "[Street Address]",
-        "city": "[City]",
-        "state": "[State]",
-        "postal_code": "[Zip Code]",
-        "country_code": "US",
-        "type": "HOME"
-      }
-    ],
-    "state": "ACTIVE",
-    "opt_ins": {
-      "sms": true/false,
-      "email": true/false
-    },
-    "first_visit": "[YYYY-MM-DD format - current date if new patient]"
-  },
-  "day": "[Day of week]",
-  "date": "[YYYY-MM-DD format]",
-  "dob": "[Date of birth in YYYY-MM-DD format]",
-  "time": "[HH:MM format, e.g., 09:00]",
-  "is_new_patient": true/false,
-  "slots_needed": [number - see slot calculation guide],
-  "doctor_for_appointment": "[Dr. Hanna, Dr. Parmar, Dr. Lee, or Dr. Yuzvyak]",
-  "patient_details": {
-    "insurance": "[Insurance provider if provided]"
-  }
-}
-
-=== SLOT CALCULATION GUIDE ===
-
-Calculate slots_needed based on appointment type (each slot = 30 minutes):
-
-Standard Appointments (1 slot = 30 minutes):
-- Routine cleaning/check-up: 2 slot
-- Dental exam: 2 slot
-- Filling (simple): 2 slot
-- Emergency visit: 2 slot
-- Implant consultation: 1 slot
-- Orthodontic consultation: 1 slot
-
-Medium Appointments (2 slots = 1 hour):
-- Filling (complex): 2 slots
-- Crown preparation: 2 slots
-- Tooth extraction: 2 slots
-- Whitening treatment: 2 slots
-
-Long Appointments:
-- Implant surgery: 3 slots (1.5 hours)
-- Root canal: 4 slots (2 hours)
-
-The system automatically handles appointment duration based on slots_needed and ensures proper scheduling without conflicts.
-
-=== ERROR HANDLING PROCEDURES ===
+=== PROTOCOLS ===
 
 Tool Retry Protocol:
-- If a tool call experiences a delay or fails, retry up to 2 times for transient issues
-- Keep caller informed during retries with phrases like:
-  - "Just a moment while the system looks that up for me..."
-  - "Bear with me for one second while I check on that availability..."
-  - "Okay, I'm just looking at the schedule for you now..."
+- If a tool call fails, retry up to 2 times for transient issues before informing the customer.
+- Keep the caller informed during retries with phrases like: "Just a moment while the system looks that up for me..."
 
 Failure Escalation:
-- If tools repeatedly fail (after 3 attempts for a single action)
-- If clinic is closed and query cannot be immediately resolved
-- Proactively offer to log a callback request using log_callback_request()
-- Always ask for and record preferred callback time
-
-Response Handling:
-- get_appointment_details() and get_contact_details() may return null responses
-- Handle null responses gracefully by offering alternatives (new booking, double-check details)
-- Always provide helpful next steps even when tools don't return expected data
-
-System Continuity:
-- Maintain conversation flow even during tool delays
-- Use natural transition phrases to keep caller engaged
-- Never leave caller in silence during system processing
-
-=== EMAIL ADDRESS HANDLING ===
-
-When collecting or confirming email addresses, always clarify the format with the user. If the user provides an email like "jake at gmail dot com" or "jakeattherategmail.com", confirm and convert it to the standard format (e.g., jake@gmail.com) before using or storing it.
+- If tools repeatedly fail after 2 attempts, offer to log a callback request.
+- Always ask for and record their preferred callback time.

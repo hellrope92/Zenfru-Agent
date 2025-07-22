@@ -81,19 +81,13 @@ def get_provider_for_day(day_name, iscleaning=False):
     
     if iscleaning:
         # For cleaning appointments, return list of hygienist provider IDs for this day
-        hygienists = day_schedule.get("hygienists", [])
-        provider_ids = []
-        for hygienist in hygienists:
-            provider_id = hygienist.get("provider_id", "")
-            if provider_id:
-                provider_ids.append(provider_id)
-        print(f"   🦷 {day_name} hygienists: {[h.get('name') for h in hygienists]} → Provider IDs: {provider_ids}")
+        # Include both H20 and 6 for Nadia Khan, and 6 for Imelda Soledad
+        provider_ids = ["H20", "6"]  # Include all possible hygienist provider IDs
         return provider_ids
     else:
         # For doctor appointments, get the scheduled doctor for this day
         doctor_name = day_schedule.get("doctor", "")
         provider_id = DOCTOR_PROVIDER_MAPPING.get(doctor_name, "")
-        print(f"   👨‍⚕️ {day_name} doctor: {doctor_name} → Provider ID: {provider_id}")
         return [provider_id] if provider_id else []
 
 def get_hygienist_schedule_for_day(day_name, provider_id=None):
@@ -160,7 +154,7 @@ def generate_time_slots(open_time, close_time, slot_duration=30, lunch_start=Non
             slot_end_minutes = current_minutes + slot_duration
             if current_minutes < lunch_end_minutes and slot_end_minutes > lunch_start_minutes:
                 # This slot overlaps with lunch, skip it
-                current_minutes += 30  # Move forward in 30-min increments to find next available slot
+                current_minutes += slot_duration  # Move forward by slot duration to find next available slot
                 continue
         
         slot_time = minutes_to_time_str(current_minutes)
@@ -179,8 +173,8 @@ def generate_hygienist_time_slots(day_name, provider_id):
     open_time = hygienist_schedule.get("open", "9:00 AM")
     close_time = hygienist_schedule.get("close", "5:00 PM")
     slot_duration = hygienist_schedule.get("slot_duration", 60)  # Default to 1 hour
-    lunch_start = hygienist_schedule.get("lunch_start")
-    lunch_end = hygienist_schedule.get("lunch_end")
+    lunch_start = hygienist_schedule.get("lunch_start", "1:00 PM")  # Standard lunch if not specified
+    lunch_end = hygienist_schedule.get("lunch_end", "2:00 PM")  # Standard lunch if not specified
     
     return generate_time_slots(open_time, close_time, slot_duration, lunch_start, lunch_end)
 
@@ -229,7 +223,6 @@ async def get_availability(date: str, iscleaning: bool = False):
     Uses static schedule.json and direct Kolla API calls
     """
     provider_type = "hygienist" if iscleaning else "doctor"
-    print(f"🔍 GET_AVAILABILITY: {date} (+ next 2 days) - Provider: {provider_type} - UPDATED OVERLAP LOGIC")
     
     try:
         # Parse the starting date
@@ -248,7 +241,6 @@ async def get_availability(date: str, iscleaning: bool = False):
         
         # Get all appointments for the 3-day period
         all_appointments = get_booked_appointments(start_date, end_date)
-        print(f"📋 Total appointments fetched: {len(all_appointments)}")
         
         availability_data = {}
         total_free_slots = 0
@@ -262,7 +254,6 @@ async def get_availability(date: str, iscleaning: bool = False):
             # Get provider IDs for this day based on iscleaning flag
             provider_ids = get_provider_for_day(day_name, iscleaning)
             provider_type = "hygienist" if iscleaning else "doctor"
-            print(f"   👩‍⚕️ {day_name}: Looking for {provider_type} appointments, Provider IDs: {provider_ids}")
             
             # Get clinic schedule for this day
             day_schedule = schedule.get(day_name, {})
@@ -279,7 +270,6 @@ async def get_availability(date: str, iscleaning: bool = False):
                     "total_slots": 0,
                     "available_times": []
                 }
-                print(f"   📅 {date_str} ({day_name}): Closed")
                 continue
             
             # Handle days with no scheduled provider
@@ -293,10 +283,10 @@ async def get_availability(date: str, iscleaning: bool = False):
                     "total_slots": 0,
                     "available_times": []
                 }
-                print(f"   📅 {date_str} ({day_name}): No {provider_type} scheduled")
                 continue
             
             # Generate all possible slots for this day based on provider type
+            slot_duration = 60  # Default to 60 minutes for all appointments
             if iscleaning and provider_ids:
                 # For hygienists, generate slots based on their individual schedules
                 all_slots = []
@@ -305,13 +295,13 @@ async def get_availability(date: str, iscleaning: bool = False):
                     all_slots.extend(hygienist_slots)
                 # Remove duplicates and sort
                 all_slots = sorted(list(set(all_slots)), key=lambda x: parse_time_to_minutes(x))
-                print(f"   🦷 Generated {len(all_slots)} hygienist slots: {all_slots[:5]}..." if len(all_slots) > 5 else f"   🦷 Generated hygienist slots: {all_slots}")
             else:
-                # For doctors, use the clinic's general schedule
+                # For doctors, use the clinic's general schedule with standard lunch break (1-hour slots)
                 open_time = day_schedule.get("open", "9:00 AM")
                 close_time = day_schedule.get("close", "5:00 PM")
-                all_slots = generate_time_slots(open_time, close_time, 30)  # 30-minute slots for doctors
-                print(f"   👨‍⚕️ Generated {len(all_slots)} doctor slots (30min each)")
+                lunch_start = "1:00 PM"  # Standard lunch break
+                lunch_end = "2:00 PM"
+                all_slots = generate_time_slots(open_time, close_time, 60, lunch_start, lunch_end)  # 60-minute slots for doctors
             
             if not all_slots:
                 availability_data[date_str] = {
@@ -323,16 +313,13 @@ async def get_availability(date: str, iscleaning: bool = False):
                     "total_slots": 0,
                     "available_times": []
                 }
-                print(f"   📅 {date_str} ({day_name}): No slots available for {provider_type}")
                 continue
             
             # Filter appointments by provider for this day
             date_str_for_comparison = current_date.strftime("%Y-%m-%d")
-            print(f"   🔍 Looking for appointments on {date_str_for_comparison}")
             
             # Filter all appointments to only include relevant providers
             day_appointments = filter_appointments_by_provider(all_appointments, provider_ids)
-            print(f"   📊 Found {len(day_appointments)} total appointments for {provider_type}s")
             
             # Get all time slots that are blocked by appointments
             blocked_slots = set()
@@ -341,7 +328,6 @@ async def get_availability(date: str, iscleaning: bool = False):
             for apt in day_appointments:
                 # Skip cancelled appointments
                 if apt.get("cancelled", False):
-                    print(f"   ⏭️ Skipping cancelled appointment: {apt.get('contact', {}).get('given_name', 'N/A')}")
                     continue
                     
                 # Use wall_start_time and wall_end_time (local time)
@@ -361,29 +347,25 @@ async def get_availability(date: str, iscleaning: bool = False):
                             patient_name = f"{apt.get('contact', {}).get('given_name', 'N/A')} {apt.get('contact', {}).get('family_name', 'N/A')}"
                             apt_provider_id = apt.get("provider_id", "N/A")
                             
-                            # Calculate which 30-minute slots this appointment blocks
-                            # Generate all possible 30-minute slots and check which ones overlap
+                            # Calculate which slots this appointment blocks
+                            # Use the correct slot duration (60 minutes for all appointments)
                             slots_blocked_by_this_apt = []
                             for slot_time_str in all_slots:
                                 # Convert slot string to datetime for overlap checking
                                 slot_datetime = datetime.strptime(f"{date_str_for_comparison} {slot_time_str}", "%Y-%m-%d %I:%M %p")
-                                slot_end_datetime = slot_datetime + timedelta(minutes=30)
+                                slot_end_datetime = slot_datetime + timedelta(minutes=slot_duration)
                                 
-                                # Check if this 30-minute slot overlaps with the appointment
+                                # Check if this slot overlaps with the appointment
                                 # Overlap occurs if: slot_start < apt_end AND slot_end > apt_start
                                 if slot_datetime < apt_end and slot_end_datetime > apt_start:
                                     blocked_slots.add(slot_time_str)
                                     slots_blocked_by_this_apt.append(slot_time_str)
                             
-                            duration_minutes = int((apt_end - apt_start).total_seconds() / 60)
-                            print(f"   📍 {patient_name} ({apt_provider_id}): {apt_start.strftime('%I:%M %p')} - {apt_end.strftime('%I:%M %p')} ({duration_minutes}min)")
-                            print(f"      → Blocks slots: {slots_blocked_by_this_apt}")
-                            
                     except Exception as e:
-                        print(f"   ⚠️ Could not parse appointment times: {wall_start_time} - {wall_end_time} - {e}")
+                        pass
             
-            print(f"   📊 Found {appointments_found_for_day} {provider_type} appointments for {date_str_for_comparison}")
-            print(f"   🚫 Blocked slots: {sorted(blocked_slots)}")
+            # print(f"   📊 Found {appointments_found_for_day} {provider_type} appointments for {date_str_for_comparison}")
+            # print(f"   🚫 Blocked slots: {sorted(blocked_slots)}")
             
             # Convert blocked slots to booked_times list for compatibility
             booked_times = list(blocked_slots)
@@ -406,9 +388,9 @@ async def get_availability(date: str, iscleaning: bool = False):
                 "available_times": available_slots[:10]  # Show up to 10 slots
             }
             
-            print(f"   📅 {date_str} ({day_name}): {free_slots_count} free, {booked_slots_count} booked out of {total_slots} total")
+        #     print(f"   📅 {date_str} ({day_name}): {free_slots_count} free, {booked_slots_count} booked out of {total_slots} total")
         
-        print(f"   ✅ Found {total_free_slots} total free slots across 3 days")
+        # print(f"   ✅ Found {total_free_slots} total free slots across 3 days")
         
         return {
             "success": True,
@@ -421,7 +403,7 @@ async def get_availability(date: str, iscleaning: bool = False):
         }
         
     except ValueError:
-        print(f"   ❌ Invalid date format: {date}")
+        #print(f"   ❌ Invalid date format: {date}")
         return {
             "success": False,
             "error": "Invalid date format. Please use YYYY-MM-DD format.",
@@ -429,7 +411,7 @@ async def get_availability(date: str, iscleaning: bool = False):
             "availability": {}
         }
     except Exception as e:
-        print(f"   ❌ Error getting schedule for date: {e}")
+        #print(f"   ❌ Error getting schedule for date: {e}")
         return {
             "success": False,
             "error": str(e),
@@ -463,20 +445,8 @@ async def debug_appointments(date: str, iscleaning: bool = False):
                 "provider_ids": provider_ids,
                 "appointments": len(day_appointments)
             }
-        print(f"\n🔍 DEBUG: Found {len(all_appointments)} total appointments")
-        print(f"Provider type: {provider_type}")
-        print(f"Provider filtering by day: {filtered_by_day}")
-        
-        for i, apt in enumerate(all_appointments):
-            print(f"  Appointment {i+1}:")
-            print(f"    provider_id: {apt.get('provider_id', 'N/A')}")
-            print(f"    start_time: {apt.get('start_time', 'N/A')}")
-            print(f"    wall_start_time: {apt.get('wall_start_time', 'N/A')}")
-            print(f"    end_time: {apt.get('end_time', 'N/A')}")
-            print(f"    wall_end_time: {apt.get('wall_end_time', 'N/A')}")
-            print(f"    patient: {apt.get('contact', {}).get('given_name', 'N/A')} {apt.get('contact', {}).get('family_name', 'N/A')}")
-            print(f"    description: {apt.get('short_description', 'N/A')}")
-            print("")
+       
+  
         
         return {
             "success": True,
