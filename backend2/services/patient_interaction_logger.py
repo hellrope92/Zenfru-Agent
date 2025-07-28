@@ -468,18 +468,6 @@ class PatientInteractionLogger:
         
         # Format date for display
         formatted_date = report_date.strftime("%B %d, %Y")
-        
-        # Logo URL - using base64 to embed the image directly in the HTML
-        logo_path = Path(__file__).parent.parent / "logo.png"
-        logo_url = ""
-        try:
-            with open(logo_path, "rb") as image_file:
-                encoded_logo = base64.b64encode(image_file.read()).decode("utf-8")
-                logo_url = f"data:image/png;base64,{encoded_logo}"
-        except Exception as e:
-            print(f"Error embedding logo: {e}")
-            # Fallback to URL if embedding fails
-            logo_url = "/static/logo.png"
 
         html = f"""
 <!DOCTYPE html>
@@ -507,13 +495,16 @@ class PatientInteractionLogger:
         .header {{
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 20px;
+            padding: 30px 20px;
             text-align: center;
             position: relative;
         }}
-        .header img {{
-            height: 40px;
-            margin-bottom: 10px;
+        .header h1 {{
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #9b59b6;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }}
         .header p {{
             margin: 0;
@@ -603,9 +594,9 @@ class PatientInteractionLogger:
             padding: 15px 20px;
             border-bottom: 1px solid #f0f0f0;
             display: grid;
-            grid-template-columns: 50px 1fr 150px;
+            grid-template-columns: 50px 1fr 100px;
             gap: 15px;
-            align-items: center;
+            align-items: start;
         }}
         .interaction-item:last-child {{
             border-bottom: none;
@@ -614,19 +605,25 @@ class PatientInteractionLogger:
             font-weight: bold;
             color: #667eea;
             font-size: 1.1em;
+            margin-top: 5px;
         }}
         .interaction-info h4 {{
             margin: 0 0 5px 0;
             color: #333;
+            font-size: 1em;
         }}
         .interaction-info p {{
-            margin: 0;
+            margin: 2px 0;
             color: #666;
-            font-size: 0.9em;
+            font-size: 0.85em;
+            line-height: 1.3;
         }}
         .interaction-time {{
-            color: #666;
-            font-size: 0.9em;
+            color: #667eea;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-align: right;
+            margin-top: 5px;
         }}
         .footer {{
             background: #f8f9fc;
@@ -646,8 +643,9 @@ class PatientInteractionLogger:
 <body>
     <div class="container">
         <div class="header">
-            <img src="{logo_url}" alt="Zenfru Logo">
-            <p>Daily Patient Interactions Report {formatted_date}</p>
+            <h1>Zenfru AI</h1>
+            <p>Daily Patient Interactions Report</p>
+            <p>{formatted_date}</p>
         </div>
         
         <div class="content">
@@ -727,21 +725,34 @@ class PatientInteractionLogger:
                 for index, interaction in enumerate(interactions[-10:], 1):  # Show last 10 interactions with numbering
                     timestamp = datetime.fromisoformat(interaction['timestamp'])
                     time_str = timestamp.strftime("%I:%M %p")
+                    date_str = timestamp.strftime("%Y-%m-%d")
                     
                     # Build patient info with reason integrated beside the name
-                    patient_info = interaction.get('patient_name', 'Unknown Patient')
+                    patient_name = interaction.get('patient_name', 'Unknown Patient')
                     reason = interaction.get('reason', '') or ''  # Handle None case
                     reason = reason.strip() if reason else ''
                     
-                    # Add reason beside patient name if available
+                    # First line: Name and reason
+                    name_and_reason = patient_name
                     if reason:
-                        patient_info += f" - {reason}"
+                        name_and_reason += f" - {reason}"
                     
-                    # Add service and doctor info
-                    if interaction.get('service_type'):
-                        patient_info += f" - {interaction['service_type']}"
-                    if interaction.get('doctor'):
-                        patient_info += f" with {interaction['doctor']}"
+                    # Get appointment details from the interaction
+                    appointment_date = interaction.get('details', {}).get('appointment_date', date_str)
+                    appointment_start_time = interaction.get('details', {}).get('appointment_wall_start_time', '')
+                    appointment_end_time = interaction.get('details', {}).get('appointment_wall_end_time', '')
+                    
+                    # Format appointment time range if available
+                    appointment_time_str = ""
+                    if appointment_start_time and appointment_end_time:
+                        try:
+                            start_dt = datetime.fromisoformat(appointment_start_time)
+                            end_dt = datetime.fromisoformat(appointment_end_time)
+                            appointment_time_str = f"{start_dt.strftime('%I:%M %p')} - {end_dt.strftime('%I:%M %p')}"
+                        except:
+                            appointment_time_str = "Time TBD"
+                    else:
+                        appointment_time_str = "Time TBD"
                     
                     contact_info = interaction.get('contact_number', 'N/A')
                     
@@ -749,8 +760,10 @@ class PatientInteractionLogger:
                         <div class="interaction-item">
                             <div class="interaction-number">{index}</div>
                             <div class="interaction-info">
-                                <h4>{patient_info}</h4>
+                                <h4>{name_and_reason}</h4>
+                                <p>{appointment_date} {appointment_time_str}</p>
                                 <p>Contact: {contact_info}</p>
+                                <p>Call Time: {time_str}</p>
                             </div>
                             <div class="interaction-time">{time_str}</div>
                         </div>

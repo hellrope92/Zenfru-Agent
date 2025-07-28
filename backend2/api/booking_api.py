@@ -1014,9 +1014,13 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 details={
                     "date": request.date,
                     "time": request.time,
+                    "day": request.day,
+                    "appointment_date": request.date,
+                    "appointment_wall_start_time": appointment_data.get('wall_start_time'),
+                    "appointment_wall_end_time": appointment_data.get('wall_end_time'),
+                    "booking_timestamp": datetime.now().isoformat(),
                     "is_new_patient": request.is_new_patient,
                     "is_new_contact": is_new_contact,
-                    "day": request.day,
                     "contact_id": contact_id
                 }
             )
@@ -1071,9 +1075,13 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 details={
                     "date": request.date,
                     "time": request.time,
+                    "day": request.day,
+                    "appointment_date": request.date,
+                    "appointment_wall_start_time": appointment_data.get('wall_start_time'),
+                    "appointment_wall_end_time": appointment_data.get('wall_end_time'),
+                    "booking_timestamp": datetime.now().isoformat(),
                     "is_new_patient": request.is_new_patient,
                     "is_new_contact": is_new_contact,
-                    "day": request.day,
                     "status_code": response.status_code
                 }
             )
@@ -1103,11 +1111,10 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             doctor=request.doctor_for_appointment,
             error_message=str(e),
             details={
-                "date": request.date,
-                "time": request.time,
+                "appointment_date": request.date,
+                "booking_timestamp": datetime.now().isoformat(),
                 "is_new_patient": request.is_new_patient,
                 "is_new_contact": is_new_contact_for_error,
-                "day": request.day,
                 "error_type": "exception"
             }
         )

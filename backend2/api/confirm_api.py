@@ -1,5 +1,6 @@
 import requests
 import os
+from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -281,7 +282,11 @@ async def confirm_by_phone(request: ConfirmByPhoneRequest):
             contact_number=request.phone,  # Use contact_number instead of phone_number
             error_message=str(e),
             details={
-                "confirmation_method": "by_phone"
+                "confirmation_method": "by_phone",
+                "appointment_date": None,
+                "appointment_wall_start_time": None,
+                "appointment_wall_end_time": None,
+                "booking_timestamp": datetime.now().isoformat()
             }
         )
         raise HTTPException(status_code=500, detail="Internal error confirming appointment by phone")
@@ -326,7 +331,11 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                     "confirmation_type": request.confirmation_type,
                     "notes": request.notes,
                     "patient_dob": request.dob,
-                    "api_method": "kolla_filter_based"
+                    "api_method": "kolla_filter_based",
+                    "appointment_date": None,
+                    "appointment_wall_start_time": None,
+                    "appointment_wall_end_time": None,
+                    "booking_timestamp": datetime.now().isoformat()
                 }
             )
             raise HTTPException(status_code=404, detail=f"Appointment {apt_id} not found or invalid.")
@@ -427,7 +436,11 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                     "patient_dob": request.dob,
                     "api_method": "kolla_filter_based",
                     "api_response_status": response.status_code,
-                    "confirmation_verified": actual_confirmed_status
+                    "confirmation_verified": actual_confirmed_status,
+                    "appointment_date": appointment_data.get("appointment_date"),
+                    "appointment_wall_start_time": appointment_data.get("wall_start_time"),
+                    "appointment_wall_end_time": appointment_data.get("wall_end_time"),
+                    "booking_timestamp": datetime.now().isoformat()
                 }
             )
             
@@ -483,7 +496,11 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                     "notes": request.notes,
                     "patient_dob": request.dob,
                     "status_code": response.status_code,
-                    "api_method": "kolla_filter_based"
+                    "api_method": "kolla_filter_based",
+                    "appointment_date": appointment_data.get("appointment_date"),
+                    "appointment_wall_start_time": appointment_data.get("wall_start_time"),
+                    "appointment_wall_end_time": appointment_data.get("wall_end_time"),
+                    "booking_timestamp": datetime.now().isoformat()
                 }
             )
             
@@ -546,7 +563,11 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 "notes": request.notes,
                 "patient_dob": request.dob,
                 "error_type": "exception",
-                "api_method": "kolla_filter_based"
+                "api_method": "kolla_filter_based",
+                "appointment_date": None,
+                "appointment_wall_start_time": None,
+                "appointment_wall_end_time": None,
+                "booking_timestamp": datetime.now().isoformat()
             }
         )
         
