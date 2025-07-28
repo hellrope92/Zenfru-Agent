@@ -3,16 +3,29 @@
     "open": "9:00 AM", 
     "close": "4:00 PM", 
     "doctor": "Dr. Yuzvyak",
+    "lunch_start": "1:00 PM",
+    "lunch_end": "2:00 PM",
     "hygienists": []
   },
   "Monday": { 
     "open": "9:00 AM", 
     "close": "6:00 PM", 
     "doctor": "Dr. Hanna",
+    "lunch_start": "1:00 PM",
+    "lunch_end": "2:00 PM",
     "hygienists": [
       {
         "name": "Nadia Khan",
         "provider_id": "H20",
+        "open": "9:00 AM",
+        "close": "6:00 PM",
+        "lunch_start": "1:00 PM",
+        "lunch_end": "2:00 PM",
+        "slot_duration": 60
+      },
+      {
+        "name": "Nadia Khan",
+        "provider_id": "6",
         "open": "9:00 AM",
         "close": "6:00 PM",
         "lunch_start": "1:00 PM",
@@ -28,12 +41,16 @@
     "open": "9:00 AM",
     "close": "5:00 PM",
     "doctor": "Dr. Parmar",
+    "lunch_start": "1:00 PM",
+    "lunch_end": "2:00 PM",
     "hygienists": []
   },
   "Thursday": { 
     "open": "9:00 AM", 
     "close": "6:00 PM", 
     "doctor": "Dr. Hanna",
+    "lunch_start": "1:00 PM",
+    "lunch_end": "2:00 PM",
     "hygienists": [
       {
         "name": "Imelda Soledad",
@@ -53,14 +70,16 @@
     "open": "9:00 AM", 
     "close": "4:00 PM", 
     "doctor": "Dr. Lee",
+    "lunch_start": "1:00 PM",
+    "lunch_end": "2:00 PM",
     "hygienists": [
       {
         "name": "Nadia Khan",
         "provider_id": "H20",
         "open": "9:00 AM",
         "close": "4:00 PM",
-        "lunch_start": null,
-        "lunch_end": null,
+        "lunch_start": "1:00 PM",
+        "lunch_end": "2:00 PM",
         "slot_duration": 60
       }
     ]

@@ -503,13 +503,14 @@ class PatientInteractionLogger:
             margin: 0 0 10px 0;
             font-size: 2.5em;
             font-weight: 700;
-            color: #9b59b6;
+            color: white;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }}
         .header p {{
             margin: 0;
             font-size: 1.2em;
             opacity: 0.9;
+            color: white;
         }}
         .content {{
             padding: 30px;
@@ -732,6 +733,15 @@ class PatientInteractionLogger:
                     reason = interaction.get('reason', '') or ''  # Handle None case
                     reason = reason.strip() if reason else ''
                     
+                    # For booking interactions, use service_type as reason if reason is empty
+                    if not reason and interaction.get('interaction_type') == 'booking':
+                        service_type = interaction.get('service_type', '')
+                        doctor = interaction.get('doctor', '')
+                        if service_type:
+                            reason = service_type
+                            if doctor and not doctor.startswith('resources/'):
+                                reason += f" with {doctor}"
+                    
                     # First line: Name and reason
                     name_and_reason = patient_name
                     if reason:
@@ -816,7 +826,7 @@ class PatientInteractionLogger:
             
             html += '</div>'
         else:
-            html += '<div class="no-interactions">End of report.</div>'
+            html += '<div class="no-interactions">End of Report</div>'
         
         html += """
             </div>
