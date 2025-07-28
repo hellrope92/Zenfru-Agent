@@ -23,6 +23,78 @@ KOLLA_HEADERS = {
 
 logger = logging.getLogger(__name__)
 
+async def fetch_patient_details_by_contact_id(contact_id: str) -> Dict[str, Any]:
+    """
+    Fetch detailed patient information using contact ID from Kolla API
+    Returns contact details including phone number for reporting
+    """
+    try:
+        # Extract the actual contact ID number from formats like "contacts/10026"
+        if "/" in contact_id:
+            contact_number = contact_id.split('/')[-1]
+        else:
+            contact_number = contact_id
+        
+        contacts_url = f"{KOLLA_BASE_URL}/contacts/{contact_number}"
+        
+        logger.info(f"📞 Fetching patient details from: {contacts_url}")
+        
+        response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
+        logger.info(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            logger.error(f"   ❌ API Error: {response.text}")
+            return {
+                "patient_name": "Unknown Patient",
+                "contact_number": "N/A",
+                "given_name": "",
+                "family_name": ""
+            }
+            
+        contact_data = response.json()
+        
+        # Extract patient details
+        given_name = contact_data.get('given_name', '')
+        family_name = contact_data.get('family_name', '')
+        
+        # Build full name
+        if given_name and family_name:
+            patient_name = f"{given_name} {family_name}"
+        elif given_name:
+            patient_name = given_name
+        elif family_name:
+            patient_name = family_name
+        else:
+            patient_name = "Unknown Patient"
+        
+        # Extract contact number with multiple fallbacks
+        contact_number = (
+            contact_data.get('primary_phone_number') or 
+            contact_data.get('phone') or 
+            contact_data.get('mobile_phone') or
+            (contact_data.get('phone_numbers', [{}])[0].get('number') if contact_data.get('phone_numbers') else None) or
+            "N/A"
+        )
+        
+        logger.info(f"   ✅ Patient details: {patient_name}, Phone: {contact_number}")
+        
+        return {
+            "patient_name": patient_name,
+            "contact_number": contact_number,
+            "given_name": given_name,
+            "family_name": family_name,
+            "full_contact_data": contact_data
+        }
+        
+    except Exception as e:
+        logger.error(f"   ❌ Error fetching patient details: {e}")
+        return {
+            "patient_name": "Unknown Patient",
+            "contact_number": "N/A",
+            "given_name": "",
+            "family_name": ""
+        }
+
 async def get_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
     """Fetch contact information from Kolla API using phone filter"""
     try:
@@ -206,7 +278,7 @@ async def confirm_by_phone(request: ConfirmByPhoneRequest):
         patient_logger.log_interaction(
             interaction_type="confirmation",
             success=False,
-            phone_number=request.phone,
+            contact_number=request.phone,  # Use contact_number instead of phone_number
             error_message=str(e),
             details={
                 "confirmation_method": "by_phone"
@@ -246,6 +318,8 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 interaction_type="confirmation",
                 success=False,
                 appointment_id=request.appointment_id,
+                patient_name=request.name,  # Use the provided name if available
+                reason=request.notes,  # Use the notes as the reason for logging
                 error_message="Appointment not found or invalid data",
                 details={
                     "confirmed": request.confirmed,
@@ -302,11 +376,25 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 except Exception as e:
                     logger.warning(f"Could not verify confirmation: {e}")
             
-            # Extract patient details from the appointment data we already fetched
+            # Extract patient details using contact ID for accurate information
             contact_info = appointment_data.get("contact", {})
-            patient_name = f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip()
-            if not patient_name:
-                patient_name = request.name
+            contact_id = contact_info.get("name", "")
+            
+            # Fetch detailed patient information using contact ID
+            if contact_id:
+                patient_details = await fetch_patient_details_by_contact_id(contact_id)
+                patient_name = patient_details["patient_name"]
+                contact_number = patient_details["contact_number"]
+            else:
+                # Fallback to basic extraction
+                patient_name = f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip()
+                if not patient_name:
+                    patient_name = request.name
+                
+                # Extract contact number
+                contact_number = (contact_info.get('primary_phone_number') or 
+                                contact_info.get('phone') or 
+                                (contact_info.get('phone_numbers', [{}])[0].get('number') if contact_info.get('phone_numbers') else None))
             
             service_type = appointment_data.get("short_description") or appointment_data.get("service_type")
             
@@ -328,8 +416,10 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
                 success=True,
                 appointment_id=request.appointment_id,
                 patient_name=patient_name,
+                contact_number=contact_number,
                 service_type=service_type,
                 doctor=doctor,
+                reason=request.notes,  # Use the notes as the reason for logging
                 details={
                     "confirmed": request.confirmed,
                     "confirmation_type": request.confirmation_type,
@@ -355,11 +445,37 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
         else:
             logger.error(f"   ❌ Failed: {response.text}")
             
+            # Extract patient details for logging failed attempt
+            contact_info = appointment_data.get("contact", {})
+            patient_name = f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip()
+            if not patient_name:
+                patient_name = request.name
+            
+            # Extract contact number
+            contact_number = None
+            if contact_info:
+                contact_number = (contact_info.get('primary_phone_number') or 
+                                contact_info.get('phone') or 
+                                (contact_info.get('phone_numbers', [{}])[0].get('number') if contact_info.get('phone_numbers') else None))
+            
+            service_type = appointment_data.get("short_description") or appointment_data.get("service_type")
+            
+            # Get doctor from providers
+            doctor = None
+            providers = appointment_data.get("providers", [])
+            if providers:
+                doctor = providers[0].get("display_name") or providers[0].get("name")
+            
             # Log failed confirmation interaction
             patient_logger.log_interaction(
                 interaction_type="confirmation",
                 success=False,
                 appointment_id=request.appointment_id,
+                patient_name=patient_name,
+                contact_number=contact_number,
+                service_type=service_type,
+                doctor=doctor,
+                reason=request.notes,  # Use the notes as the reason for logging
                 error_message=f"Kolla API error: {response.text}",
                 details={
                     "confirmed": request.confirmed,
@@ -383,11 +499,46 @@ async def confirm_appointment_endpoint(request: ConfirmRequest):
     except Exception as e:
         logger.error("Error in confirm_appointment_endpoint", exc_info=True)
         
+        # Try to extract patient details from appointment data if available
+        patient_name = request.name
+        contact_number = None
+        service_type = None
+        doctor = None
+        
+        try:
+            if 'appointment_data' in locals() and appointment_data:
+                contact_info = appointment_data.get("contact", {})
+                if contact_info:
+                    given_name = contact_info.get('given_name', '')
+                    family_name = contact_info.get('family_name', '')
+                    if given_name and family_name:
+                        patient_name = f"{given_name} {family_name}"
+                    elif given_name:
+                        patient_name = given_name
+                    elif family_name:
+                        patient_name = family_name
+                    
+                    contact_number = (contact_info.get('primary_phone_number') or 
+                                    contact_info.get('phone') or 
+                                    (contact_info.get('phone_numbers', [{}])[0].get('number') if contact_info.get('phone_numbers') else None))
+                
+                service_type = appointment_data.get("short_description") or appointment_data.get("service_type")
+                providers = appointment_data.get("providers", [])
+                if providers:
+                    doctor = providers[0].get('display_name') or providers[0].get('name')
+        except:
+            pass  # If we can't extract details, that's okay
+        
         # Log failed confirmation interaction due to exception
         patient_logger.log_interaction(
             interaction_type="confirmation",
             success=False,
             appointment_id=request.appointment_id,
+            patient_name=patient_name,
+            contact_number=contact_number,
+            service_type=service_type,
+            doctor=doctor,
+            reason=request.notes,  # Use the notes as the reason for logging
             error_message=str(e),
             details={
                 "confirmed": request.confirmed,

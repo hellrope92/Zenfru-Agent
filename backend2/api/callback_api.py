@@ -13,6 +13,7 @@ import logging
 import asyncio
 
 from api.models import LogCallbackRequest
+from services.patient_interaction_logger import patient_logger
 
 router = APIRouter(prefix="/api", tags=["callbacks"])
 
@@ -49,6 +50,22 @@ async def log_callback_request(request: LogCallbackRequest):
         # Save asynchronously off the event loop
         await asyncio.to_thread(save_callback_to_file, callback_entry)
         
+        # Log callback request interaction
+        patient_logger.log_interaction(
+            interaction_type="callback",
+            patient_name=request.name,
+            contact_number=request.contact,
+            success=True,
+            reason=request.reason,  # Use the reason parameter
+            details={
+                "callback_id": callback_entry["id"],
+                "reason": request.reason,
+                "preferred_callback_time": request.preferred_callback_time,
+                "priority": callback_entry["priority"],
+                "status": "pending"
+            }
+        )
+        
         # Determine urgency and response time
         urgency_info = get_urgency_info(request.reason)
         
@@ -69,6 +86,22 @@ async def log_callback_request(request: LogCallbackRequest):
         
     except Exception as e:
         logger.error("Error logging callback request", exc_info=True)
+        
+        # Log failed callback request interaction
+        patient_logger.log_interaction(
+            interaction_type="callback",
+            patient_name=request.name,
+            contact_number=request.contact,
+            success=False,
+            reason=request.reason,  # Use the reason parameter
+            error_message=str(e),
+            details={
+                "reason": request.reason,
+                "preferred_callback_time": request.preferred_callback_time,
+                "error_type": "exception"
+            }
+        )
+        
         raise HTTPException(status_code=500, detail="Internal error logging callback request")
 
 def determine_priority(reason: str) -> str:

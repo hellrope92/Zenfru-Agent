@@ -6,8 +6,9 @@ Technical Documentation for Dental Associates of Jersey City
 get_current_day():
 - Purpose: To accurately determine the current day of the week and calculate dates.
 
-check_available_slots(date, is_cleaning=false):
+check_available_slots(date, iscleaning=false):
 - Purpose: To query for available appointment times.
+- set iscleaning = true, for cleaning or hygienist appointments
 
 get_appointment_details(phone):
 - Purpose: To retrieve existing appointment information for a patient.

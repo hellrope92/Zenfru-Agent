@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from pathlib import Path
 from .models import RescheduleRequest
 from services.patient_interaction_logger import patient_logger
 
@@ -210,11 +211,12 @@ async def reschedule_by_phone(request: RescheduleByPhoneRequest):
         import traceback
         traceback.print_exc()
         
-        # Log failed rescheduling interaction
+        # Log failed rescheduling interaction with phone number as contact
         patient_logger.log_interaction(
             interaction_type="rescheduling",
             success=False,
-            phone_number=request.phone,
+            contact_number=request.phone,  # Use the phone number as contact
+            reason=request.notes,  # Use the notes as the reason for logging
             error_message=str(e),
             details={
                 "date": request.date,
@@ -288,6 +290,107 @@ async def cancel_appointment(appointment_id: str) -> bool:
         print(f"   ❌ Error cancelling appointment: {e}")
         return False
 
+def get_doctor_for_date(target_date: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the doctor scheduled for a specific date from schedule.json
+    Returns doctor info with name and provider_id, or None if not found
+    """
+    try:
+        # Load schedule.json
+        schedule_file = Path(__file__).parent.parent / "schedule.json"
+        
+        if not schedule_file.exists():
+            print(f"   ⚠️ Schedule file not found: {schedule_file}")
+            return None
+        
+        with open(schedule_file, 'r') as f:
+            schedule = json.load(f)
+        
+        # Parse the target date to get day of week
+        try:
+            date_obj = datetime.strptime(target_date, "%Y-%m-%d")
+            day_name = date_obj.strftime("%A")  # Get full day name (Monday, Tuesday, etc.)
+        except ValueError:
+            print(f"   ❌ Invalid date format: {target_date}")
+            return None
+        
+        # Get schedule for that day
+        day_schedule = schedule.get(day_name)
+        
+        if not day_schedule:
+            print(f"   ⚠️ No schedule found for {day_name}")
+            return None
+        
+        # Check if clinic is closed
+        if day_schedule.get("closed", False):
+            print(f"   ⚠️ Clinic is closed on {day_name}")
+            return None
+        
+        # Get doctor for that day
+        doctor_name = day_schedule.get("doctor")
+        if not doctor_name:
+            print(f"   ⚠️ No doctor scheduled for {day_name}")
+            return None
+        
+        # Map doctor names to provider IDs (based on the schedule data)
+        doctor_mapping = {
+            "Dr. Yuzvyak": "002",  # Assuming provider IDs
+            "Dr. Hanna": "001", 
+            "Dr. Parmar": "003",
+            "Dr. Lee": "004"
+        }
+        
+        provider_id = doctor_mapping.get(doctor_name, "001")  # Default to 001 if not found
+        
+        print(f"   📋 Doctor for {day_name} ({target_date}): {doctor_name} (Provider ID: {provider_id})")
+        
+        return {
+            "name": doctor_name,
+            "provider_id": provider_id,
+            "display_name": doctor_name,
+            "day_schedule": day_schedule
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error getting doctor for date: {e}")
+        return None
+
+def find_operatory_for_provider(provider_id: str, preferred_operatory_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Find an appropriate operatory resource for a given provider
+    Returns operatory resource info or None if not found
+    """
+    try:
+        # If we have a preferred operatory ID, try to use it
+        if preferred_operatory_id:
+            return {
+                "name": f"resources/{preferred_operatory_id}",
+                "remote_id": preferred_operatory_id,
+                "type": "operatory", 
+                "display_name": f"Operatory {preferred_operatory_id}"
+            }
+        
+        # Otherwise, assign operatory based on provider (simple mapping)
+        provider_operatory_map = {
+            "001": "operatory_1",
+            "002": "operatory_2", 
+            "003": "operatory_3",
+            "004": "operatory_4"
+        }
+        
+        operatory_id = provider_operatory_map.get(provider_id, "operatory_1")  # Default to operatory_1
+        
+        return {
+            "name": f"resources/{operatory_id}",
+            "remote_id": operatory_id.split('_')[1],  # Extract number part
+            "type": "operatory",
+            "display_name": f"Operatory {operatory_id.split('_')[1]}"
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error finding operatory for provider {provider_id}: {e}")
+        return None
+
 @router.post("/reschedule_patient_appointment")
 async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
     """
@@ -330,12 +433,49 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         original_resources = original_appointment.get("resources", [])
         original_operatory = original_appointment.get("operatory", "")
         original_service = original_appointment.get("short_description", "Rescheduled Appointment")
+        original_date = original_appointment.get("date", "")
         
         print(f"   📋 Original appointment details:")
         print(f"   Contact: {contact_info.get('given_name', '')} {contact_info.get('family_name', '')} ({contact_id})")
+        print(f"   Original Date: {original_date}")
+        print(f"   New Date: {request.date}")
         print(f"   Providers: {[p.get('remote_id', 'N/A') for p in providers]}")
-        print(f"   Operatory: {original_operatory}")
+        print(f"   Resources: {original_resources}")
+        print(f"   Operatory: '{original_operatory}'")
         print(f"   Service: {original_service}")
+        
+        # INTELLIGENT RESCHEDULE LOGIC: Handle date-based provider changes
+        updated_providers = providers
+        updated_resources = original_resources
+        
+        if original_date != request.date:
+            # Different date - get doctor scheduled for new date
+            print(f"   🔄 Different date detected - looking up doctor for {request.date}")
+            doctor_info = get_doctor_for_date(request.date)
+            
+            if doctor_info:
+                print(f"   👨‍⚕️ Updating provider for new date: {doctor_info['name']} (ID: {doctor_info['provider_id']})")
+                
+                # Update provider information
+                updated_providers = [{
+                    "name": f"providers/{doctor_info['provider_id']}", 
+                    "remote_id": doctor_info['provider_id'],
+                    "type": "provider",
+                    "display_name": doctor_info['name']
+                }]
+                
+                # Find operatory for the new provider and update resources
+                operatory_info = find_operatory_for_provider(doctor_info['provider_id'], None)
+                if operatory_info:
+                    print(f"   🏥 Updating operatory for new provider: {operatory_info['display_name']}")
+                    updated_resources = [operatory_info]
+                    original_operatory = operatory_info["name"]
+                else:
+                    print(f"   ⚠️ No operatory found for new provider, using default")
+            else:
+                print(f"   ⚠️ Could not find doctor for {request.date}, keeping original provider")
+        else:
+            print(f"   ⏰ Same date - only changing time, keeping original provider and operatory")
 
         # Step 2: Cancel the existing appointment
         print(f"❌ Step 2: Cancelling original appointment...")
@@ -362,16 +502,14 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "status": "invalid_time_format"
             }
 
-        # Prepare new appointment data
+        # Prepare new appointment data using updated providers and resources
         new_appointment_data = {
             "contact_id": contact_id,
             "contact": contact_info,
             "wall_start_time": wall_start_time,
             "wall_end_time": wall_end_time,
-            "providers": providers,
-            "resources": original_resources,
+            "providers": updated_providers,  # Use updated providers
             "appointment_type_id": "appointmenttypes/1",
-            "operatory": original_operatory,
             "scheduler": {
                 "name": "",
                 "remote_id": "HO7",
@@ -382,9 +520,38 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
             "notes": request.notes or "Rescheduled appointment",
             "additional_data": original_appointment.get("additional_data", {})
         }
+        
+        # Handle operatory and resources - use updated resources
+        if updated_resources:
+            new_appointment_data["resources"] = updated_resources
+        
+        if original_operatory:
+            new_appointment_data["operatory"] = original_operatory
+        else:
+            # If no operatory specified, create a default operatory resource
+            print(f"   ⚠️ No operatory found, creating default operatory resource")
+            default_operatory_resource = {
+                "name": "resources/operatory_1",
+                "remote_id": "1",
+                "type": "operatory",
+                "display_name": "Operatory 1"
+            }
+            
+            # Add to resources if not already present
+            if not updated_resources:
+                new_appointment_data["resources"] = [default_operatory_resource]
+            else:
+                # Check if there's already an operatory resource
+                has_operatory = any(res.get("type") == "operatory" for res in updated_resources)
+                if not has_operatory:
+                    new_appointment_data["resources"] = updated_resources + [default_operatory_resource]
+                else:
+                    new_appointment_data["resources"] = updated_resources
 
         print(f"   📋 New appointment data:")
         print(f"   Time: {wall_start_time} - {wall_end_time}")
+        print(f"   Resources: {new_appointment_data.get('resources', [])}")
+        print(f"   Operatory: {new_appointment_data.get('operatory', '')}")
         print(f"   Notes: {request.notes}")
 
         # Create the new appointment
@@ -397,22 +564,51 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
             new_appointment_id = response.json().get('name', f"NEW-{appointment_id}")
             print(f"   ✅ Success: New appointment created with ID: {new_appointment_id}")
             
+            # Fetch detailed patient information using contact ID
+            patient_details = await fetch_patient_details_by_contact_id(contact_id)
+            patient_name = patient_details["patient_name"]
+            contact_number = patient_details["contact_number"]
+            
+            # Extract service and doctor info (use updated providers for logging)
+            service_type = original_service if original_service != "Rescheduled Appointment" else None
+            doctor = None
+            if updated_providers:
+                doctor = updated_providers[0].get('display_name') or updated_providers[0].get('name') or updated_providers[0].get('remote_id')
+            
+            # Create enhanced reschedule note based on date change
+            reschedule_note = ""
+            if original_date != request.date:
+                doctor_info = get_doctor_for_date(request.date)
+                doctor_name = doctor_info['name'] if doctor_info else f"Provider {updated_providers[0].get('remote_id', 'Unknown')}"
+                reschedule_note = f"Rescheduled from {original_date} to {request.date} at {request.start_time}-{request.end_time} with {doctor_name}"
+            else:
+                reschedule_note = f"Rescheduled time to {request.start_time}-{request.end_time} on {request.date}"
+            
             # Log successful rescheduling interaction
             patient_logger.log_interaction(
                 interaction_type="rescheduling",
                 success=True,
+                patient_name=patient_name,
+                contact_number=contact_number,
                 appointment_id=appointment_id,
+                service_type=service_type,
+                doctor=doctor,
+                reason=request.notes,  # Use the notes as the reason for logging
                 details={
                     "original_appointment_id": appointment_id,
                     "new_appointment_id": new_appointment_id,
-                    "date": request.date,
+                    "original_date": original_date,
+                    "new_date": request.date,
                     "start_time": request.start_time,
                     "end_time": request.end_time,
                     "notes": request.notes,
                     "wall_start_time": wall_start_time,
                     "wall_end_time": wall_end_time,
                     "api_method": "cancel_and_create",
-                    "contact_id": contact_id
+                    "contact_id": contact_id,
+                    "date_changed": original_date != request.date,
+                    "intelligent_reschedule": True,
+                    "reschedule_note": reschedule_note
                 }
             )
             
@@ -432,21 +628,40 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         else:
             print(f"   ❌ Failed to create new appointment: {response.text}")
             
+            # Fetch detailed patient information using contact ID for failed attempt logging
+            patient_details = await fetch_patient_details_by_contact_id(contact_id)
+            patient_name = patient_details["patient_name"]
+            contact_number = patient_details["contact_number"]
+            
+            # Extract service and doctor info (use updated providers for logging)
+            service_type = original_service if original_service != "Rescheduled Appointment" else None
+            doctor = None
+            if updated_providers:
+                doctor = updated_providers[0].get('display_name') or updated_providers[0].get('name') or updated_providers[0].get('remote_id')
+            
             # Log failed rescheduling interaction
             patient_logger.log_interaction(
                 interaction_type="rescheduling",
                 success=False,
+                patient_name=patient_name,
+                contact_number=contact_number,
                 appointment_id=appointment_id,
+                service_type=service_type,
+                doctor=doctor,
+                reason=request.notes,  # Use the notes as the reason for logging
                 error_message=f"Failed to create new appointment: {response.text}",
                 details={
                     "original_appointment_id": appointment_id,
-                    "date": request.date,
+                    "original_date": original_date,
+                    "new_date": request.date,
                     "start_time": request.start_time,
                     "end_time": request.end_time,
                     "notes": request.notes,
                     "status_code": response.status_code,
                     "api_method": "cancel_and_create",
-                    "step_failed": "create_new_appointment"
+                    "step_failed": "create_new_appointment",
+                    "date_changed": original_date != request.date,
+                    "intelligent_reschedule": True
                 }
             )
             
@@ -466,11 +681,50 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         print(f"   ❌ Error rescheduling appointment: {str(e)}")
         traceback.print_exc()
         
+        # Try to extract patient details from original appointment if available
+        patient_name = "Unknown Patient"
+        contact_number = "N/A"
+        service_type = None
+        doctor = None
+        
+        try:
+            if 'original_appointment' in locals() and original_appointment:
+                # Try to fetch detailed patient info using contact ID
+                contact_info = original_appointment.get("contact", {})
+                contact_id = contact_info.get("name", "")
+                
+                if contact_id:
+                    patient_details = await fetch_patient_details_by_contact_id(contact_id)
+                    patient_name = patient_details["patient_name"]
+                    contact_number = patient_details["contact_number"]
+                else:
+                    # Fallback to basic extraction
+                    given_name = contact_info.get('given_name', '')
+                    family_name = contact_info.get('family_name', '')
+                    if given_name and family_name:
+                        patient_name = f"{given_name} {family_name}"
+                    elif given_name:
+                        patient_name = given_name
+                    elif family_name:
+                        patient_name = family_name
+                
+                service_type = original_appointment.get("short_description")
+                providers = original_appointment.get("providers", [])
+                if providers:
+                    doctor = providers[0].get('display_name') or providers[0].get('name') or providers[0].get('remote_id')
+        except:
+            pass  # If we can't extract details, that's okay
+        
         # Log failed rescheduling interaction due to exception
         patient_logger.log_interaction(
             interaction_type="rescheduling",
             success=False,
+            patient_name=patient_name,
+            contact_number=contact_number,
             appointment_id=request.appointment_id,
+            service_type=service_type,
+            doctor=doctor,
+            reason=request.notes,  # Use the notes as the reason for logging
             error_message=str(e),
             details={
                 "date": request.date,
@@ -569,6 +823,78 @@ def combine_date_time_to_wall(date_str: str, time_str: str) -> Optional[str]:
         
     except Exception:
         return None
+
+async def fetch_patient_details_by_contact_id(contact_id: str) -> Dict[str, Any]:
+    """
+    Fetch detailed patient information using contact ID from Kolla API
+    Returns contact details including phone number for reporting
+    """
+    try:
+        # Extract the actual contact ID number from formats like "contacts/10026"
+        if "/" in contact_id:
+            contact_number = contact_id.split('/')[-1]
+        else:
+            contact_number = contact_id
+        
+        contacts_url = f"{KOLLA_BASE_URL}/contacts/{contact_number}"
+        
+        print(f"📞 Fetching patient details from: {contacts_url}")
+        
+        response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
+        print(f"   Response Status: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ API Error: {response.text}")
+            return {
+                "patient_name": "Unknown Patient",
+                "contact_number": "N/A",
+                "given_name": "",
+                "family_name": ""
+            }
+            
+        contact_data = response.json()
+        
+        # Extract patient details
+        given_name = contact_data.get('given_name', '')
+        family_name = contact_data.get('family_name', '')
+        
+        # Build full name
+        if given_name and family_name:
+            patient_name = f"{given_name} {family_name}"
+        elif given_name:
+            patient_name = given_name
+        elif family_name:
+            patient_name = family_name
+        else:
+            patient_name = "Unknown Patient"
+        
+        # Extract contact number with multiple fallbacks
+        contact_number = (
+            contact_data.get('primary_phone_number') or 
+            contact_data.get('phone') or 
+            contact_data.get('mobile_phone') or
+            (contact_data.get('phone_numbers', [{}])[0].get('number') if contact_data.get('phone_numbers') else None) or
+            "N/A"
+        )
+        
+        print(f"   ✅ Patient details: {patient_name}, Phone: {contact_number}")
+        
+        return {
+            "patient_name": patient_name,
+            "contact_number": contact_number,
+            "given_name": given_name,
+            "family_name": family_name,
+            "full_contact_data": contact_data
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error fetching patient details: {e}")
+        return {
+            "patient_name": "Unknown Patient",
+            "contact_number": "N/A",
+            "given_name": "",
+            "family_name": ""
+        }
 
 # Legacy endpoint for backward compatibility
 @router.post("/reschedule_appointment")

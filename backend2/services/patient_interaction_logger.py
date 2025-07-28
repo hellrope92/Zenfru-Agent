@@ -225,7 +225,8 @@ class PatientInteractionLogger:
         appointment_id: Optional[str] = None,
         service_type: Optional[str] = None,
         doctor: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        reason: Optional[str] = None
     ) -> str:
         """
         Log a patient interaction
@@ -240,6 +241,7 @@ class PatientInteractionLogger:
             service_type: Type of service (will be fetched from appointment if not provided)
             doctor: Doctor name (will be fetched from appointment if not provided)
             error_message: Error message if interaction failed
+            reason: Reason for the interaction (e.g., notes from request)
             
         Returns:
             Unique interaction ID
@@ -273,6 +275,7 @@ class PatientInteractionLogger:
             "service_type": service_type,
             "doctor": doctor,
             "error_message": error_message,
+            "reason": reason,  # Add reason field
             "details": details or {}
         }
         
@@ -354,8 +357,16 @@ class PatientInteractionLogger:
         new_bookings = sum(1 for i in interactions 
                           if i.get('interaction_type') == 'booking' and i.get('success', False))
         
-        # Calculate minimum estimated revenue (new bookings * $110)
-        min_est_revenue = new_bookings * 110
+        # Count successful reschedulings
+        reschedulings = sum(1 for i in interactions 
+                          if i.get('interaction_type') == 'rescheduling' and i.get('success', False))
+        
+        # Count successful confirmations
+        confirmations = sum(1 for i in interactions 
+                          if i.get('interaction_type') == 'confirmation' and i.get('success', False))
+        
+        # Calculate minimum estimated revenue (bookings + reschedulings + confirmations) * $110
+        min_est_revenue = (new_bookings + reschedulings + confirmations) * 110
         
         # Count by interaction type
         type_counts = {}
@@ -418,8 +429,42 @@ class PatientInteractionLogger:
         
         return categorized
     
+    def _get_callback_requests(self, report_date: date) -> List[Dict[str, Any]]:
+        """Get callback requests for the specified date from the callback requests file"""
+        try:
+            # Path to callback requests file
+            callbacks_file = self.log_directory.parent / "callback_requests.json"
+            
+            if not callbacks_file.exists():
+                return []
+            
+            with open(callbacks_file, 'r') as f:
+                all_callbacks = json.load(f)
+            
+            # Filter callbacks for the specific date
+            date_callbacks = []
+            target_date_str = report_date.strftime('%Y-%m-%d')
+            
+            for callback in all_callbacks:
+                callback_date = callback.get('request_timestamp', '')[:10]  # Get YYYY-MM-DD part
+                if callback_date == target_date_str:
+                    date_callbacks.append(callback)
+            
+            # Sort by priority (high -> medium -> low) and then by timestamp
+            priority_order = {'high': 0, 'medium': 1, 'low': 2}
+            date_callbacks.sort(key=lambda x: (priority_order.get(x.get('priority', 'low'), 2), x.get('request_timestamp', '')))
+            
+            return date_callbacks
+            
+        except Exception as e:
+            print(f"Error getting callback requests: {e}")
+            return []
+    
     def _generate_html_report(self, report_date: date, stats: Dict[str, Any], categorized: Dict[str, List[Dict[str, Any]]]) -> str:
         """Generate professional HTML report"""
+        
+        # Get callback requests for this date
+        callback_requests = self._get_callback_requests(report_date)
         
         # Format date for display
         formatted_date = report_date.strftime("%B %d, %Y")
@@ -480,9 +525,23 @@ class PatientInteractionLogger:
         }}
         .stats-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(4, 1fr);
             gap: 20px;
             margin-bottom: 40px;
+        }}
+        
+        /* Mobile responsive - stack stats vertically on smaller screens */
+        @media (max-width: 768px) {{
+            .stats-grid {{
+                grid-template-columns: 1fr;
+            }}
+        }}
+        
+        /* Tablet responsive - 2 columns on medium screens */
+        @media (min-width: 769px) and (max-width: 1024px) {{
+            .stats-grid {{
+                grid-template-columns: repeat(2, 1fr);
+            }}
         }}
         .stat-card {{
             background: #f8f9fc;
@@ -609,7 +668,7 @@ class PatientInteractionLogger:
                     </div>
         """
         
-        # Add peak hour if available
+        # Always add the fourth stat card for consistent layout
         if stats.get('peak_hour') is not None:
             peak_hour = stats['peak_hour']
             peak_time = f"{peak_hour:02d}:00"
@@ -617,6 +676,14 @@ class PatientInteractionLogger:
                     <div class="stat-card">
                         <div class="stat-number">{peak_time}</div>
                         <div class="stat-label">Peak Hour ({stats['peak_hour_count']} calls)</div>
+                    </div>
+            """
+        else:
+            # Show success rate when no peak hour data is available
+            html += f"""
+                    <div class="stat-card">
+                        <div class="stat-number">{stats['success_rate']}%</div>
+                        <div class="stat-label">Success Rate</div>
                     </div>
             """
         
@@ -661,7 +728,16 @@ class PatientInteractionLogger:
                     timestamp = datetime.fromisoformat(interaction['timestamp'])
                     time_str = timestamp.strftime("%I:%M %p")
                     
+                    # Build patient info with reason integrated beside the name
                     patient_info = interaction.get('patient_name', 'Unknown Patient')
+                    reason = interaction.get('reason', '') or ''  # Handle None case
+                    reason = reason.strip() if reason else ''
+                    
+                    # Add reason beside patient name if available
+                    if reason:
+                        patient_info += f" - {reason}"
+                    
+                    # Add service and doctor info
                     if interaction.get('service_type'):
                         patient_info += f" - {interaction['service_type']}"
                     if interaction.get('doctor'):
@@ -689,12 +765,52 @@ class PatientInteractionLogger:
         if not any(categorized.values()):
             html += '<div class="no-interactions">No interactions recorded for this date.</div>'
         
+        # Add Callback Requests section
+        html += """
+            </div>
+        </div>
+        
+       
+        """
+        
+        if callback_requests:
+            html += f'<div class="category-count">{len(callback_requests)} callback requests</div>'
+            html += '<div class="interaction-list">'
+            
+            for index, callback in enumerate(callback_requests, 1):
+                # Format time
+                try:
+                    timestamp = datetime.fromisoformat(callback['request_timestamp'])
+                    time_str = timestamp.strftime("%I:%M %p")
+                except:
+                    time_str = "N/A"
+                
+                patient_name = callback.get('patient_name', 'Unknown Patient')
+                contact_info = callback.get('contact_info', 'N/A')
+                reason = callback.get('reason', 'No reason provided')
+                
+                html += f"""
+                    <div class="interaction-item">
+                        <div class="interaction-number">{index}</div>
+                        <div class="interaction-info">
+                            <h4>{patient_name}</h4>
+                            <p>Contact: {contact_info}</p>
+                            <p>Reason: {reason}</p>
+                        </div>
+                        <div class="interaction-time">{time_str}</div>
+                    </div>
+                """
+            
+            html += '</div>'
+        else:
+            html += '<div class="no-interactions">End of report.</div>'
+        
         html += """
             </div>
         </div>
         
         <div class="footer">
-            <p>Report generated automatically by Zenfru AI Assistant</p>
+            <p>Report generated automatically by Zenfru AI Assistant. All Rights Reserved</p>
             <p>Generated on """ + datetime.now().strftime("%B %d, %Y at %I:%M %p") + """</p>
         </div>
     </div>
