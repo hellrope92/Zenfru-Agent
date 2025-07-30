@@ -190,7 +190,7 @@ async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, 
                 "operatory": appointment.get("resources", [{}])[0].get("display_name", "") if appointment.get("resources") else "",
                 "notes": appointment.get("notes", ""),
                 # "short_description" is either omitted or set to notes
-      
+                "short_description": appointment.get("notes", ""),
             }
             enriched_appointments.append(enriched_appointment)
         
