@@ -24,6 +24,124 @@ KOLLA_HEADERS = {
     "consumer-id": os.getenv("KOLLA_CONSUMER_ID", "dajc")
 }
 
+# Doctor and Hygienist to Provider ID mappings
+DOCTOR_PROVIDER_MAPPING = {
+    # Doctors
+    "Dr. Yuzvyak": "100",              # Maps to "Andriy Yuzvyak"
+    "Dr. Hanna": "001",                # Maps to "Dr. Nancy  Hanna"
+    "Dr. Parmar": "101",               # Maps to "Akshay Parmar"
+    "Dr. Lee": "102",                  # Maps to "Daniel Lee"
+    # Add full name variations for better matching
+    "Akshay Parmar": "101",
+    "Daniel Lee": "102",
+    "Andriy Yuzvyak": "100",
+    "Nancy Hanna": "001",
+    # Hygienists
+    "Nadia Khan": "H20",               # Maps to "Nadia Khan RDH"
+    "Nadia Khan RDH": "H20",
+    "Nadia": "H20",
+    "Imelda Soledad": "6",             # Maps to "Imelda Soledad RDH"
+    "Imelda Soledad RDH": "6",
+    "Imelda": "6",
+}
+
+# Alternative mapping using exact display names from Kolla
+KOLLA_DISPLAY_NAME_MAPPING = {
+    # Doctors
+    "Dr. Nancy  Hanna": "001",         # Note: two spaces in display name
+    "Andriy Yuzvyak": "100",
+    "Akshay Parmar": "101",
+    "Daniel Lee": "102",
+    # Hygienists
+    "Nadia Khan RDH": "H20",
+    "Imelda Soledad RDH": "6",
+}
+
+# Provider to Operatory mappings
+PROVIDER_OPERATORY_MAPPING = {
+    # Doctors
+    "100": "resources/operatory_8",    # Dr. Andriy Yuzvyak
+    "001": "resources/operatory_7",    # Dr. Nancy Hanna
+    "101": "resources/operatory_11",   # Dr. Akshay Parmar
+    "102": "resources/operatory_10",   # Dr. Daniel Lee
+    # Hygienists
+    "H20": "resources/operatory_12",   # Nadia Khan RDH
+    "6": "resources/operatory_13",     # Imelda Soledad RDH
+}
+
+# Operatory remote_id mappings for the resources array
+OPERATORY_REMOTE_ID_MAPPING = {
+    "resources/operatory_7": "7",
+    "resources/operatory_8": "8",
+    "resources/operatory_10": "10",
+    "resources/operatory_11": "11",
+    "resources/operatory_12": "12",
+    "resources/operatory_13": "13",
+}
+
+def get_provider_and_operatory_from_doctor_name(doctor_name: str) -> Dict[str, Any]:
+    """
+    Get provider ID and operatory information based on doctor/hygienist name
+    Returns dict with provider_id, operatory_resource, and display info
+    """
+    try:
+        print(f"   🔍 Looking up provider: '{doctor_name}'")
+        
+        # Try primary mapping first
+        provider_id = DOCTOR_PROVIDER_MAPPING.get(doctor_name)
+        
+        # If not found, try Kolla display name mapping
+        if not provider_id:
+            provider_id = KOLLA_DISPLAY_NAME_MAPPING.get(doctor_name)
+        
+        # If still not found, try case-insensitive matching
+        if not provider_id:
+            doctor_name_lower = doctor_name.lower()
+            for key, value in DOCTOR_PROVIDER_MAPPING.items():
+                if key.lower() == doctor_name_lower:
+                    provider_id = value
+                    break
+        
+        if not provider_id:
+            print(f"   ⚠️ Provider '{doctor_name}' not found in mappings, using default")
+            return {
+                "provider_id": "001",  # Default to Dr. Hanna
+                "operatory_resource": "resources/operatory_7",
+                "operatory_remote_id": "7",
+                "display_name": doctor_name,
+                "found": False,
+                "provider_type": "doctor"
+            }
+        
+        # Get operatory for this provider
+        operatory_resource = PROVIDER_OPERATORY_MAPPING.get(provider_id, "resources/operatory_7")
+        operatory_remote_id = OPERATORY_REMOTE_ID_MAPPING.get(operatory_resource, "7")
+        
+        # Determine provider type
+        provider_type = "hygienist" if provider_id in ["H20", "6"] else "doctor"
+        
+        print(f"   ✅ Found mapping: {doctor_name} -> Provider {provider_id} ({provider_type}) -> {operatory_resource} (Remote ID: {operatory_remote_id})")
+        
+        return {
+            "provider_id": provider_id,
+            "operatory_resource": operatory_resource,
+            "operatory_remote_id": operatory_remote_id,
+            "display_name": doctor_name,
+            "found": True,
+            "provider_type": provider_type
+        }
+        
+    except Exception as e:
+        print(f"   ❌ Error mapping provider name: {e}")
+        return {
+            "provider_id": "001",  # Default to Dr. Hanna
+            "operatory_resource": "resources/operatory_7",
+            "operatory_remote_id": "7",
+            "display_name": doctor_name,
+            "found": False,
+            "provider_type": "doctor"
+        }
+
 async def get_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
     """Fetch contact information from Kolla API using phone filter"""
     try:
@@ -151,6 +269,7 @@ class FlexibleRescheduleRequest(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     notes: Optional[str] = None
+    new_doctor: Optional[str] = None  # New field for specifying doctor
 
 class RescheduleByPhoneRequest(BaseModel):
     phone: str
@@ -158,6 +277,7 @@ class RescheduleByPhoneRequest(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     notes: Optional[str] = None
+    new_doctor: Optional[str] = None  # New field for specifying doctor
 
 @router.post("/reschedule_by_phone")
 async def reschedule_by_phone(request: RescheduleByPhoneRequest):
@@ -171,6 +291,7 @@ async def reschedule_by_phone(request: RescheduleByPhoneRequest):
         print(f"   Date: {request.date}")
         print(f"   Start Time: {request.start_time}")
         print(f"   End Time: {request.end_time}")
+        print(f"   New Doctor: {request.new_doctor}")
         print(f"   Notes: {request.notes}")
         
         # Normalize phone number
@@ -193,7 +314,8 @@ async def reschedule_by_phone(request: RescheduleByPhoneRequest):
             date=request.date,
             start_time=request.start_time,
             end_time=request.end_time,
-            notes=request.notes
+            notes=request.notes,
+            new_doctor=request.new_doctor
         )
         
         # Call the existing reschedule function
@@ -222,6 +344,7 @@ async def reschedule_by_phone(request: RescheduleByPhoneRequest):
                 "date": request.date,
                 "start_time": request.start_time,
                 "end_time": request.end_time,
+                "new_doctor": request.new_doctor,
                 "notes": request.notes,
                 "error_type": "exception",
                 "reschedule_method": "by_phone"
@@ -332,21 +455,16 @@ def get_doctor_for_date(target_date: str) -> Optional[Dict[str, Any]]:
             print(f"   ⚠️ No doctor scheduled for {day_name}")
             return None
         
-        # Map doctor names to provider IDs (based on the schedule data)
-        doctor_mapping = {
-            "Dr. Yuzvyak": "002",  # Assuming provider IDs
-            "Dr. Hanna": "001", 
-            "Dr. Parmar": "003",
-            "Dr. Lee": "004"
-        }
+        # Get provider ID using the new mapping function
+        doctor_info = get_provider_and_operatory_from_doctor_name(doctor_name)
         
-        provider_id = doctor_mapping.get(doctor_name, "001")  # Default to 001 if not found
-        
-        print(f"   📋 Doctor for {day_name} ({target_date}): {doctor_name} (Provider ID: {provider_id})")
+        print(f"   📋 Doctor for {day_name} ({target_date}): {doctor_name} (Provider ID: {doctor_info['provider_id']})")
         
         return {
             "name": doctor_name,
-            "provider_id": provider_id,
+            "provider_id": doctor_info["provider_id"],
+            "operatory_resource": doctor_info["operatory_resource"],
+            "operatory_remote_id": doctor_info["operatory_remote_id"],
             "display_name": doctor_name,
             "day_schedule": day_schedule
         }
@@ -357,7 +475,7 @@ def get_doctor_for_date(target_date: str) -> Optional[Dict[str, Any]]:
 
 def find_operatory_for_provider(provider_id: str, preferred_operatory_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    Find an appropriate operatory resource for a given provider
+    Find an appropriate operatory resource for a given provider using the mapping
     Returns operatory resource info or None if not found
     """
     try:
@@ -370,21 +488,15 @@ def find_operatory_for_provider(provider_id: str, preferred_operatory_id: Option
                 "display_name": f"Operatory {preferred_operatory_id}"
             }
         
-        # Otherwise, assign operatory based on provider (simple mapping)
-        provider_operatory_map = {
-            "001": "operatory_1",
-            "002": "operatory_2", 
-            "003": "operatory_3",
-            "004": "operatory_4"
-        }
-        
-        operatory_id = provider_operatory_map.get(provider_id, "operatory_1")  # Default to operatory_1
+        # Use the provider operatory mapping
+        operatory_resource = PROVIDER_OPERATORY_MAPPING.get(provider_id, "resources/operatory_7")  # Default to operatory_7
+        operatory_remote_id = OPERATORY_REMOTE_ID_MAPPING.get(operatory_resource, "7")
         
         return {
-            "name": f"resources/{operatory_id}",
-            "remote_id": operatory_id.split('_')[1],  # Extract number part
+            "name": operatory_resource,
+            "remote_id": operatory_remote_id,
             "type": "operatory",
-            "display_name": f"Operatory {operatory_id.split('_')[1]}"
+            "display_name": f"Operatory {operatory_remote_id}"
         }
         
     except Exception as e:
@@ -397,7 +509,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
     Reschedule an existing appointment using EagleSoft-compatible workflow:
     1. Cancel the existing appointment
     2. Create a new appointment with the new time details
-    Accepts: appointment_id, date, start_time, end_time, notes
+    Accepts: appointment_id, date, start_time, end_time, notes, new_doctor
     """
     try:
         print(f"🔄 RESCHEDULE_PATIENT_APPOINTMENT (Cancel + Create New):")
@@ -405,6 +517,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         print(f"   Date: {request.date}")
         print(f"   Start Time: {request.start_time}")
         print(f"   End Time: {request.end_time}")
+        print(f"   New Doctor: {request.new_doctor}")
         print(f"   Notes: {request.notes}")
         
         appointment_id = request.appointment_id
@@ -444,12 +557,41 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         print(f"   Operatory: '{original_operatory}'")
         print(f"   Service: {original_service}")
         
-        # INTELLIGENT RESCHEDULE LOGIC: Handle date-based provider changes
+        # ENHANCED RESCHEDULE LOGIC: Handle new_doctor or date-based provider changes
         updated_providers = providers
         updated_resources = original_resources
+        doctor_change_reason = None
         
-        if original_date != request.date:
-            # Different date - get doctor scheduled for new date
+        if request.new_doctor:
+            # New provider specified - use the mapping to get provider and operatory
+            print(f"   👨‍⚕️ New provider specified: {request.new_doctor}")
+            doctor_mapping = get_provider_and_operatory_from_doctor_name(request.new_doctor)
+            
+            # Update provider information
+            updated_providers = [{
+                "name": f"providers/{doctor_mapping['provider_id']}", 
+                "remote_id": doctor_mapping['provider_id'],
+                "type": "provider",
+                "display_name": doctor_mapping['display_name']
+            }]
+            
+            # Update operatory based on provider mapping
+            operatory_resource = {
+                "name": doctor_mapping['operatory_resource'],
+                "remote_id": doctor_mapping['operatory_remote_id'],
+                "type": "operatory",
+                "display_name": f"Operatory {doctor_mapping['operatory_remote_id']}"
+            }
+            
+            updated_resources = [operatory_resource]
+            original_operatory = doctor_mapping['operatory_resource']
+            doctor_change_reason = f"Provider changed to {request.new_doctor} ({doctor_mapping['provider_type']})"
+            
+            print(f"   ✅ Updated provider: {doctor_mapping['display_name']} (ID: {doctor_mapping['provider_id']}, Type: {doctor_mapping['provider_type']})")
+            print(f"   ✅ Updated operatory: {doctor_mapping['operatory_resource']} (Remote ID: {doctor_mapping['operatory_remote_id']})")
+            
+        elif original_date != request.date:
+            # Different date but no specific doctor - get doctor scheduled for new date
             print(f"   🔄 Different date detected - looking up doctor for {request.date}")
             doctor_info = get_doctor_for_date(request.date)
             
@@ -464,18 +606,24 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "display_name": doctor_info['name']
                 }]
                 
-                # Find operatory for the new provider and update resources
-                operatory_info = find_operatory_for_provider(doctor_info['provider_id'], None)
-                if operatory_info:
-                    print(f"   🏥 Updating operatory for new provider: {operatory_info['display_name']}")
-                    updated_resources = [operatory_info]
-                    original_operatory = operatory_info["name"]
-                else:
-                    print(f"   ⚠️ No operatory found for new provider, using default")
+                # Update operatory based on provider mapping
+                operatory_resource = {
+                    "name": doctor_info['operatory_resource'],
+                    "remote_id": doctor_info['operatory_remote_id'],
+                    "type": "operatory",
+                    "display_name": f"Operatory {doctor_info['operatory_remote_id']}"
+                }
+                
+                updated_resources = [operatory_resource]
+                original_operatory = doctor_info['operatory_resource']
+                doctor_change_reason = f"Provider updated for new date: {doctor_info['name']}"
+                
+                print(f"   ✅ Updated provider for date: {doctor_info['name']} (ID: {doctor_info['provider_id']})")
+                print(f"   ✅ Updated operatory: {doctor_info['operatory_resource']} (Remote ID: {doctor_info['operatory_remote_id']})")
             else:
                 print(f"   ⚠️ Could not find doctor for {request.date}, keeping original provider")
         else:
-            print(f"   ⏰ Same date - only changing time, keeping original provider and operatory")
+            print(f"   ⏰ Same date and no new doctor specified - keeping original provider and operatory")
 
         # Step 2: Cancel the existing appointment
         print(f"❌ Step 2: Cancelling original appointment...")
@@ -489,7 +637,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
             }
 
         # Step 3: Create new appointment with the new time details
-        print(f"📅 Step 3: Creating new appointment with updated time...")
+        print(f"📅 Step 3: Creating new appointment with updated details...")
         
         # Combine date and time for new appointment
         wall_start_time = combine_date_time_to_wall(request.date, request.start_time)
@@ -531,10 +679,10 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
             # If no operatory specified, create a default operatory resource
             print(f"   ⚠️ No operatory found, creating default operatory resource")
             default_operatory_resource = {
-                "name": "resources/operatory_1",
-                "remote_id": "1",
+                "name": "resources/operatory_7",  # Default to operatory_7
+                "remote_id": "7",
                 "type": "operatory",
-                "display_name": "Operatory 1"
+                "display_name": "Operatory 7"
             }
             
             # Add to resources if not already present
@@ -575,9 +723,11 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
             if updated_providers:
                 doctor = updated_providers[0].get('display_name') or updated_providers[0].get('name') or updated_providers[0].get('remote_id')
             
-            # Create enhanced reschedule note based on date change
+            # Create enhanced reschedule note based on changes
             reschedule_note = ""
-            if original_date != request.date:
+            if request.new_doctor:
+                reschedule_note = f"Rescheduled to {request.date} at {request.start_time}-{request.end_time} with {request.new_doctor}"
+            elif original_date != request.date:
                 doctor_info = get_doctor_for_date(request.date)
                 doctor_name = doctor_info['name'] if doctor_info else f"Provider {updated_providers[0].get('remote_id', 'Unknown')}"
                 reschedule_note = f"Rescheduled from {original_date} to {request.date} at {request.start_time}-{request.end_time} with {doctor_name}"
@@ -601,6 +751,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "new_date": request.date,
                     "start_time": request.start_time,
                     "end_time": request.end_time,
+                    "new_doctor": request.new_doctor,
+                    "doctor_change_reason": doctor_change_reason,
                     "notes": request.notes,
                     "appointment_date": request.date,
                     "appointment_wall_start_time": wall_start_time,
@@ -611,6 +763,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "api_method": "cancel_and_create",
                     "contact_id": contact_id,
                     "date_changed": original_date != request.date,
+                    "doctor_changed": request.new_doctor is not None,
                     "intelligent_reschedule": True,
                     "reschedule_note": reschedule_note
                 }
@@ -624,6 +777,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "date": request.date,
                 "start_time": request.start_time,
                 "end_time": request.end_time,
+                "new_doctor": request.new_doctor,
+                "doctor_change_reason": doctor_change_reason,
                 "wall_start_time": wall_start_time,
                 "wall_end_time": wall_end_time,
                 "notes": request.notes,
@@ -660,6 +815,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "new_date": request.date,
                     "start_time": request.start_time,
                     "end_time": request.end_time,
+                    "new_doctor": request.new_doctor,
+                    "doctor_change_reason": doctor_change_reason,
                     "notes": request.notes,
                     "appointment_date": request.date,
                     "appointment_wall_start_time": wall_start_time,
@@ -669,6 +826,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "api_method": "cancel_and_create",
                     "step_failed": "create_new_appointment",
                     "date_changed": original_date != request.date,
+                    "doctor_changed": request.new_doctor is not None,
                     "intelligent_reschedule": True
                 }
             )
@@ -677,6 +835,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "success": False, 
                 "message": f"Original appointment was cancelled, but failed to create new appointment: {response.text}",
                 "original_appointment_id": appointment_id,
+                "new_doctor": request.new_doctor,
                 "status": "partial_failure",
                 "status_code": response.status_code
             }
@@ -738,6 +897,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "date": request.date,
                 "start_time": request.start_time,
                 "end_time": request.end_time,
+                "new_doctor": request.new_doctor,
                 "notes": request.notes,
                 "error_type": "exception",
                 "api_method": "cancel_and_create"

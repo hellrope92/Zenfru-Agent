@@ -1,0 +1,39 @@
+[
+  {
+    "interaction_id": "e68c7bdc-8cee-41ea-a531-c76fd800996c",
+    "timestamp": "2025-07-30T21:21:24.088935",
+    "date": "2025-07-30",
+    "time": "21:21:24.088935",
+    "interaction_type": "rescheduling",
+    "patient_name": "John Cena",
+    "contact_number": "5432109876",
+    "success": true,
+    "appointment_id": "92882",
+    "service_type": "Insert",
+    "doctor": "Dr. Lee",
+    "error_message": null,
+    "reason": "Rescheduled to patient's request",
+    "details": {
+      "original_appointment_id": "92882",
+      "new_appointment_id": "appointments/92889",
+      "original_date": "",
+      "new_date": "2025-08-09",
+      "start_time": "18:00",
+      "end_time": "19:00",
+      "notes": "Rescheduled to patient's request",
+      "new_doctor": "Dr. Lee",
+      "appointment_date": "2025-08-09",
+      "appointment_wall_start_time": "2025-08-09 18:00:00",
+      "appointment_wall_end_time": "2025-08-09 19:00:00",
+      "reschedule_timestamp": "2025-07-30T21:21:24.088861",
+      "wall_start_time": "2025-08-09 18:00:00",
+      "wall_end_time": "2025-08-09 19:00:00",
+      "api_method": "cancel_and_create",
+      "contact_id": "contacts/10045",
+      "date_changed": true,
+      "doctor_override": true,
+      "intelligent_reschedule": true,
+      "reschedule_note": "Rescheduled to 2025-08-09 at 18:00-19:00 with Dr. Lee"
+    }
+  }
+]

@@ -1,0 +1,18 @@
+Doctors:
+- "Dr. Yuzvyak"
+- "Dr. Hanna"  
+- "Dr. Parmar"
+- "Dr. Lee"
+- "Akshay Parmar"
+- "Daniel Lee"
+- "Andriy Yuzvyak"
+- "Nancy Hanna"
+- "Dr. Nancy  Hanna"
+
+Hygienists:
+- "Nadia Khan"
+- "Nadia Khan RDH"
+- "Nadia"
+- "Imelda Soledad"
+- "Imelda Soledad RDH"
+- "Imelda"

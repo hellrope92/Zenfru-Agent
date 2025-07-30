@@ -169,9 +169,9 @@ async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, 
         appointments = appointments_data.get("appointments", [])
         
         print(f"   ✅ Retrieved {len(appointments)} appointments")
-        
-        # Sort appointments by start_time to get the latest ones first
-        appointments.sort(key=lambda x: x.get("start_time", ""), reverse=True)
+
+        # Sort appointments by wall_start_time to get the latest ones first
+        appointments.sort(key=lambda x: x.get("wall_start_time", ""), reverse=True)
         
         # Enrich appointment data
         enriched_appointments = []
@@ -189,9 +189,9 @@ async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, 
                 "provider": appointment.get("providers", [{}])[0].get("display_name", "") if appointment.get("providers") else "",
                 "operatory": appointment.get("resources", [{}])[0].get("display_name", "") if appointment.get("resources") else "",
                 "notes": appointment.get("notes", ""),
-                "short_description": appointment.get("short_description", "")
+                # "short_description" is either omitted or set to notes
+      
             }
-            
             enriched_appointments.append(enriched_appointment)
         
         return enriched_appointments
