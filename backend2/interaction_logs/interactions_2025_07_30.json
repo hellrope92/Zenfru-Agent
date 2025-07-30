@@ -73,5 +73,67 @@
       "intelligent_reschedule": true,
       "reschedule_note": "Rescheduled to 2025-08-06 at 18:00-19:00 with Dr. Parmar"
     }
+  },
+  {
+    "interaction_id": "7909d341-609e-41d8-95b9-d37116507d65",
+    "timestamp": "2025-07-30T22:35:45.035660",
+    "date": "2025-07-30",
+    "time": "22:35:45.035660",
+    "interaction_type": "rescheduling",
+    "patient_name": "Unknown Patient",
+    "contact_number": "N/A",
+    "success": false,
+    "appointment_id": "92889",
+    "service_type": "Insert",
+    "doctor": "resources/provider_102",
+    "error_message": "cannot access local variable 'original_notes' where it is not associated with a value",
+    "reason": "Rescheduled to patient's request",
+    "details": {
+      "date": "2025-08-06",
+      "start_time": "18:00",
+      "end_time": "19:00",
+      "new_doctor": "Dr. Parmar",
+      "notes": "Rescheduled to patient's request",
+      "error_type": "exception",
+      "api_method": "cancel_and_create"
+    }
+  },
+  {
+    "interaction_id": "2481cbb5-2d9d-4b20-861d-8e0c5012f024",
+    "timestamp": "2025-07-30T22:36:50.566291",
+    "date": "2025-07-30",
+    "time": "22:36:50.566291",
+    "interaction_type": "rescheduling",
+    "patient_name": "John Cena",
+    "contact_number": "5432109876",
+    "success": true,
+    "appointment_id": "92889",
+    "service_type": "Insert",
+    "doctor": "Dr. Parmar",
+    "error_message": null,
+    "reason": "Rescheduled to patient's request",
+    "details": {
+      "original_appointment_id": "92889",
+      "new_appointment_id": "appointments/92897",
+      "original_date": "",
+      "new_date": "2025-08-06",
+      "start_time": "18:00",
+      "end_time": "19:00",
+      "new_doctor": "Dr. Parmar",
+      "doctor_change_reason": "Provider changed to Dr. Parmar (doctor)",
+      "notes": "Rescheduled to patient's request",
+      "appointment_date": "2025-08-06",
+      "appointment_wall_start_time": "2025-08-06 18:00:00",
+      "appointment_wall_end_time": "2025-08-06 19:00:00",
+      "reschedule_timestamp": "2025-07-30T22:36:50.566255",
+      "wall_start_time": "2025-08-06 18:00:00",
+      "wall_end_time": "2025-08-06 19:00:00",
+      "api_method": "cancel_and_create",
+      "contact_id": "contacts/10045",
+      "date_changed": true,
+      "doctor_changed": true,
+      "intelligent_reschedule": true,
+      "reschedule_note": "Rescheduled to 2025-08-06 at 18:00-19:00 with Dr. Parmar"
+    }
   }
 ]

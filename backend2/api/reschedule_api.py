@@ -554,6 +554,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
         original_operatory = original_appointment.get("operatory", "")
         original_service = original_appointment.get("short_description", "Rescheduled Appointment")
         original_date = original_appointment.get("date", "")
+        original_notes = original_appointment.get("notes", "")
         
         print(f"   📋 Original appointment details:")
         print(f"   Contact: {contact_info.get('given_name', '')} {contact_info.get('family_name', '')} ({contact_id})")
@@ -604,7 +605,6 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
             
             if doctor_info:
                 print(f"   👨‍⚕️ Updating provider for new date: {doctor_info['name']} (ID: {doctor_info['provider_id']})")
-                
                 # Update provider information
                 updated_providers = [{
                     "name": f"providers/{doctor_info['provider_id']}", 
@@ -612,7 +612,6 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "type": "provider",
                     "display_name": doctor_info['name']
                 }]
-                
                 # Update operatory based on provider mapping
                 operatory_resource = {
                     "name": doctor_info['operatory_resource'],
@@ -620,11 +619,10 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                     "type": "operatory",
                     "display_name": f"Operatory {doctor_info['operatory_remote_id']}"
                 }
-                
                 updated_resources = [operatory_resource]
                 original_operatory = doctor_info['operatory_resource']
                 doctor_change_reason = f"Provider updated for new date: {doctor_info['name']}"
-                original_notes = original_appointment.get("notes", "")
+                # original_notes already set above
                 print(f"   ✅ Updated provider for date: {doctor_info['name']} (ID: {doctor_info['provider_id']})")
                 print(f"   ✅ Updated operatory: {doctor_info['operatory_resource']} (Remote ID: {doctor_info['operatory_remote_id']})")
             else:
