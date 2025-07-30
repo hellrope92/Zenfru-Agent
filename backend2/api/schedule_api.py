@@ -39,6 +39,9 @@ HYGIENIST_PROVIDER_MAPPING = {
     "Imelda Soledad": "6"
 }
 
+# All possible hygienist provider IDs (including alternate IDs)
+ALL_HYGIENIST_PROVIDER_IDS = ["H20", "6", "HO4"]
+
 def load_schedule():
     """Load static schedule from schedule.json"""
     schedule_file = Path(__file__).parent.parent.parent / "schedule.json"
@@ -80,10 +83,9 @@ def get_provider_for_day(day_name, iscleaning=False):
     day_schedule = schedule.get(day_name, {})
     
     if iscleaning:
-        # For cleaning appointments, return list of hygienist provider IDs for this day
-        # Include both H20 and 6 for Nadia Khan, and 6 for Imelda Soledad
-        provider_ids = ["H20", "6"]  # Include all possible hygienist provider IDs
-        return provider_ids
+        # For cleaning appointments, return all possible hygienist provider IDs
+        # This includes the scheduled hygienists plus any alternate provider IDs
+        return ALL_HYGIENIST_PROVIDER_IDS
     else:
         # For doctor appointments, get the scheduled doctor for this day
         doctor_name = day_schedule.get("doctor", "")
@@ -193,7 +195,7 @@ def get_booked_appointments(start_date, end_date):
         
         print(f"📞 Calling Kolla API: {url}")
         print(f"   Filter: {filter_query}")
-        print(f"   Headers: {KOLLA_HEADERS}")
+        
         
         response = requests.get(url, headers=KOLLA_HEADERS, params=params)
         print(f"   Response Status: {response.status_code}")
@@ -207,9 +209,7 @@ def get_booked_appointments(start_date, end_date):
         data = response.json()
         appointments = data.get("appointments", [])
         
-        print(f"   ✅ Retrieved {len(appointments)} appointments")
-        if len(appointments) > 0:
-            print(f"   📋 First appointment sample: {appointments[0].get('start_time', 'N/A')} - {appointments[0].get('wall_start_time', 'N/A')}")
+
         return appointments
         
     except Exception as e:
@@ -320,7 +320,6 @@ async def get_availability(date: str, iscleaning: bool = False):
             
             # Filter all appointments to only include relevant providers
             day_appointments = filter_appointments_by_provider(all_appointments, provider_ids)
-            
             # Get all time slots that are blocked by appointments
             blocked_slots = set()
             appointments_found_for_day = 0
@@ -419,82 +418,82 @@ async def get_availability(date: str, iscleaning: bool = False):
             "availability": {}
         }
 
-async def debug_appointments(date: str, iscleaning: bool = False):
-    """
-    Debug endpoint to show raw appointment data from Kolla API
-    Filters by provider based on iscleaning flag
-    """
-    try:
-        start_date = datetime.strptime(date, "%Y-%m-%d")
-        end_date = start_date + timedelta(days=2)
+# async def debug_appointments(date: str, iscleaning: bool = False):
+#     """
+#     Debug endpoint to show raw appointment data from Kolla API
+#     Filters by provider based on iscleaning flag
+#     """
+#     try:
+#         start_date = datetime.strptime(date, "%Y-%m-%d")
+#         end_date = start_date + timedelta(days=2)
         
-        # Get all appointments
-        all_appointments = get_booked_appointments(start_date, end_date)
+#         # Get all appointments
+#         all_appointments = get_booked_appointments(start_date, end_date)
         
-        # Filter by provider type for debugging
-        provider_type = "hygienist" if iscleaning else "doctor"
+#         # Filter by provider type for debugging
+#         provider_type = "hygienist" if iscleaning else "doctor"
         
-        # Show provider filtering for each day
-        filtered_by_day = {}
-        for i in range(3):
-            current_date = start_date + timedelta(days=i)
-            day_name = current_date.strftime("%A")
-            provider_ids = get_provider_for_day(day_name, iscleaning)
-            day_appointments = filter_appointments_by_provider(all_appointments, provider_ids)
-            filtered_by_day[day_name] = {
-                "provider_ids": provider_ids,
-                "appointments": len(day_appointments)
-            }
+#         # Show provider filtering for each day
+#         filtered_by_day = {}
+#         for i in range(3):
+#             current_date = start_date + timedelta(days=i)
+#             day_name = current_date.strftime("%A")
+#             provider_ids = get_provider_for_day(day_name, iscleaning)
+#             day_appointments = filter_appointments_by_provider(all_appointments, provider_ids)
+#             filtered_by_day[day_name] = {
+#                 "provider_ids": provider_ids,
+#                 "appointments": len(day_appointments)
+#             }
        
   
         
-        return {
-            "success": True,
-            "date_range": f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
-            "provider_type": provider_type,
-            "provider_filtering": filtered_by_day,
-            "total_appointments": len(all_appointments),
-            "appointments": all_appointments
-        }
+#         return {
+#             "success": True,
+#             "date_range": f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
+#             "provider_type": provider_type,
+#             "provider_filtering": filtered_by_day,
+#             "total_appointments": len(all_appointments),
+#             "appointments": all_appointments
+#         }
         
-    except Exception as e:
-        print(f"Debug error: {e}")
-        return {"success": False, "error": str(e)}
+#     except Exception as e:
+#         print(f"Debug error: {e}")
+#         return {"success": False, "error": str(e)}
 
-@router.get("/debug/hygienist-schedule/{day}")
-async def debug_hygienist_schedule(day: str):
-    """Debug endpoint to check hygienist schedule for a specific day"""
-    try:
-        schedule = load_schedule()
-        day_schedule = schedule.get(day, {})
-        hygienists = day_schedule.get("hygienists", [])
+# @router.get("/debug/hygienist-schedule/{day}")
+# async def debug_hygienist_schedule(day: str):
+#     """Debug endpoint to check hygienist schedule for a specific day"""
+#     try:
+#         schedule = load_schedule()
+#         day_schedule = schedule.get(day, {})
+#         hygienists = day_schedule.get("hygienists", [])
         
-        result = {
-            "day": day,
-            "clinic_open": day_schedule.get("open"),
-            "clinic_close": day_schedule.get("close"),
-            "doctor": day_schedule.get("doctor"),
-            "hygienists_count": len(hygienists),
-            "hygienists": []
-        }
+#         result = {
+#             "day": day,
+#             "clinic_open": day_schedule.get("open"),
+#             "clinic_close": day_schedule.get("close"),
+#             "doctor": day_schedule.get("doctor"),
+#             "hygienists_count": len(hygienists),
+#             "hygienists": []
+#         }
         
-        for hygienist in hygienists:
-            name = hygienist.get("name")
-            provider_id = hygienist.get("provider_id")
-            slots = generate_hygienist_time_slots(day, provider_id)
+#         for hygienist in hygienists:
+#             name = hygienist.get("name")
+#             provider_id = hygienist.get("provider_id")
+#             slots = generate_hygienist_time_slots(day, provider_id)
             
-            result["hygienists"].append({
-                "name": name,
-                "provider_id": provider_id,
-                "open": hygienist.get("open"),
-                "close": hygienist.get("close"),
-                "lunch_start": hygienist.get("lunch_start"),
-                "lunch_end": hygienist.get("lunch_end"),
-                "slot_duration": hygienist.get("slot_duration"),
-                "available_slots": slots,
-                "total_slots": len(slots)
-            })
+#             result["hygienists"].append({
+#                 "name": name,
+#                 "provider_id": provider_id,
+#                 "open": hygienist.get("open"),
+#                 "close": hygienist.get("close"),
+#                 "lunch_start": hygienist.get("lunch_start"),
+#                 "lunch_end": hygienist.get("lunch_end"),
+#                 "slot_duration": hygienist.get("slot_duration"),
+#                 "available_slots": slots,
+#                 "total_slots": len(slots)
+#             })
         
-        return result
-    except Exception as e:
-        return {"error": str(e)}
+#         return result
+#     except Exception as e:
+#         return {"error": str(e)}

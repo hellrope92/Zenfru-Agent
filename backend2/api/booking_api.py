@@ -160,12 +160,6 @@ KOLLA_HEADERS = {
     'Authorization': f'Bearer {KOLLA_BEARER_TOKEN}'
 }
 
-print(f"🔧 Booking API Configuration:")
-print(f"   Base URL: {KOLLA_BASE_URL}")
-print(f"   Connector ID: {KOLLA_CONNECTOR_ID}")
-print(f"   Consumer ID: {KOLLA_CONSUMER_ID}")
-print(f"   Bearer Token: {KOLLA_BEARER_TOKEN[:20]}...")
-
 KOLLA_RESOURCES_URL = f"{KOLLA_BASE_URL}/resources"
 
 def parse_contact_info(contact_data: Union[str, Dict[str, Any]]) -> Dict[str, str]:
@@ -465,145 +459,145 @@ def find_resource(resources, resource_type, display_name=None):
                 return r
     return None
 
-def debug_available_providers(resources):
-    """Debug function to log all available providers"""
-    print(f"🔍 DEBUG: Available providers in Kolla:")
-    providers = [r for r in resources if r.get('type') == 'PROVIDER']
-    for provider in providers:
-        print(f"   - Name: {provider.get('name')} | Remote ID: {provider.get('remote_id')} | Display: '{provider.get('display_name')}' | Position: {provider.get('additional_data', {}).get('position', 'N/A')}")
-    return providers
+# def debug_available_providers(resources):
+#     """Debug function to log all available providers"""
+#     print(f"🔍 DEBUG: Available providers in Kolla:")
+#     providers = [r for r in resources if r.get('type') == 'PROVIDER']
+#     for provider in providers:
+#         print(f"   - Name: {provider.get('name')} | Remote ID: {provider.get('remote_id')} | Display: '{provider.get('display_name')}' | Position: {provider.get('additional_data', {}).get('position', 'N/A')}")
+#     return providers
 
-def debug_provider_operatory_mappings():
-    """Debug function to show provider-operatory mappings"""
-    print(f"🔍 DEBUG: Provider-Operatory Mappings:")
-    for provider_id, operatory_name in PROVIDER_OPERATORY_MAPPING.items():
-        operatory_remote_id = OPERATORY_REMOTE_ID_MAPPING.get(operatory_name, "N/A")
-        print(f"   Provider {provider_id} → {operatory_name} (remote_id: {operatory_remote_id})")
+# def debug_provider_operatory_mappings():
+#     """Debug function to show provider-operatory mappings"""
+#     print(f"🔍 DEBUG: Provider-Operatory Mappings:")
+#     for provider_id, operatory_name in PROVIDER_OPERATORY_MAPPING.items():
+#         operatory_remote_id = OPERATORY_REMOTE_ID_MAPPING.get(operatory_name, "N/A")
+#         print(f"   Provider {provider_id} → {operatory_name} (remote_id: {operatory_remote_id})")
 
-async def check_time_slot_availability(start_datetime: datetime, end_datetime: datetime, operatory_name: str = None) -> dict:
-    """
-    Check if the requested time slot is available by querying existing appointments.
-    Returns dict with availability info and potential adjusted end time for minor conflicts.
+# async def check_time_slot_availability(start_datetime: datetime, end_datetime: datetime, operatory_name: str = None) -> dict:
+#     """
+#     Check if the requested time slot is available by querying existing appointments.
+#     Returns dict with availability info and potential adjusted end time for minor conflicts.
     
-    Returns:
-    {
-        "available": bool,
-        "adjusted_end_time": datetime or None,
-        "conflict_details": dict or None
-    }
-    """
-    try:
-        # Get all appointments from Kolla
-        url = f"{KOLLA_BASE_URL}/appointments"
-        response = requests.get(url, headers=KOLLA_HEADERS, timeout=10)
+#     Returns:
+#     {
+#         "available": bool,
+#         "adjusted_end_time": datetime or None,
+#         "conflict_details": dict or None
+#     }
+#     """
+#     try:
+#         # Get all appointments from Kolla
+#         url = f"{KOLLA_BASE_URL}/appointments"
+#         response = requests.get(url, headers=KOLLA_HEADERS, timeout=10)
         
-        if response.status_code != 200:
-            print(f"Error fetching appointments for availability check: {response.status_code}")
-            # If we can't check, allow the booking (fail open)
-            return {"available": True, "adjusted_end_time": None, "conflict_details": None}
+#         if response.status_code != 200:
+#             print(f"Error fetching appointments for availability check: {response.status_code}")
+#             # If we can't check, allow the booking (fail open)
+#             return {"available": True, "adjusted_end_time": None, "conflict_details": None}
             
-        appointments_data = response.json()
-        existing_appointments = appointments_data.get("appointments", [])
+#         appointments_data = response.json()
+#         existing_appointments = appointments_data.get("appointments", [])
         
-        # Convert our datetime to the format we expect from Kolla
-        requested_start = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
-        requested_end = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
+#         # Convert our datetime to the format we expect from Kolla
+#         requested_start = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
+#         requested_end = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
         
-        print(f"   Checking availability for: {requested_start} - {requested_end}")
-        if operatory_name:
-            print(f"   In operatory: {operatory_name}")
+#         print(f"   Checking availability for: {requested_start} - {requested_end}")
+#         if operatory_name:
+#             print(f"   In operatory: {operatory_name}")
         
-        # Check each existing appointment for conflicts
-        for appointment in existing_appointments:
-            # Skip cancelled or completed appointments
-            if appointment.get("cancelled") or appointment.get("completed"):
-                continue
+#         # Check each existing appointment for conflicts
+#         for appointment in existing_appointments:
+#             # Skip cancelled or completed appointments
+#             if appointment.get("cancelled") or appointment.get("completed"):
+#                 continue
                 
-            # Get appointment times
-            appt_wall_start = appointment.get("wall_start_time", "")
-            appt_wall_end = appointment.get("wall_end_time", "")
-            appt_operatory = None
+#             # Get appointment times
+#             appt_wall_start = appointment.get("wall_start_time", "")
+#             appt_wall_end = appointment.get("wall_end_time", "")
+#             appt_operatory = None
             
-            # Check operatory if specified
-            if operatory_name:
-                resources = appointment.get("resources", [])
-                for resource in resources:
-                    if resource.get("type") == "operatory":
-                        appt_operatory = resource.get("name")
-                        break
+#             # Check operatory if specified
+#             if operatory_name:
+#                 resources = appointment.get("resources", [])
+#                 for resource in resources:
+#                     if resource.get("type") == "operatory":
+#                         appt_operatory = resource.get("name")
+#                         break
                 
-                # If different operatory, no conflict
-                if appt_operatory and appt_operatory != operatory_name:
-                    continue
+#                 # If different operatory, no conflict
+#                 if appt_operatory and appt_operatory != operatory_name:
+#                     continue
             
-            # Check for time overlap
-            if appt_wall_start and appt_wall_end:
-                try:
-                    # Parse existing appointment times
-                    existing_start = datetime.strptime(appt_wall_start, "%Y-%m-%d %H:%M:%S")
-                    existing_end = datetime.strptime(appt_wall_end, "%Y-%m-%d %H:%M:%S")
+#             # Check for time overlap
+#             if appt_wall_start and appt_wall_end:
+#                 try:
+#                     # Parse existing appointment times
+#                     existing_start = datetime.strptime(appt_wall_start, "%Y-%m-%d %H:%M:%S")
+#                     existing_end = datetime.strptime(appt_wall_end, "%Y-%m-%d %H:%M:%S")
                     
-                    # Check if there's any overlap
-                    # Overlap occurs if: start_time < existing_end AND end_time > existing_start
-                    if start_datetime < existing_end and end_datetime > existing_start:
-                        appt_id = appointment.get("name", "Unknown")
+#                     # Check if there's any overlap
+#                     # Overlap occurs if: start_time < existing_end AND end_time > existing_start
+#                     if start_datetime < existing_end and end_datetime > existing_start:
+#                         appt_id = appointment.get("name", "Unknown")
                         
-                        # Check if we can adjust the end time for minor conflicts
-                        # Case 1: Our appointment starts before existing but ends slightly into it
-                        if (start_datetime < existing_start and 
-                            end_datetime > existing_start and 
-                            end_datetime <= existing_end):
+#                         # Check if we can adjust the end time for minor conflicts
+#                         # Case 1: Our appointment starts before existing but ends slightly into it
+#                         if (start_datetime < existing_start and 
+#                             end_datetime > existing_start and 
+#                             end_datetime <= existing_end):
                             
-                            # Calculate the overlap duration
-                            overlap_minutes = (end_datetime - existing_start).total_seconds() / 60
+#                             # Calculate the overlap duration
+#                             overlap_minutes = (end_datetime - existing_start).total_seconds() / 60
                             
-                            # If overlap is 15 minutes or less, adjust to end before existing appointment
-                            if overlap_minutes <= 15:
-                                adjusted_end = existing_start
-                                # Ensure minimum 30-minute appointment duration
-                                min_duration_minutes = 30
-                                if (adjusted_end - start_datetime).total_seconds() / 60 >= min_duration_minutes:
-                                    print(f"   🔧 Minor conflict detected ({overlap_minutes:.0f} min overlap)")
-                                    print(f"   Existing: {appt_wall_start} - {appt_wall_end}")
-                                    print(f"   Requested: {requested_start} - {requested_end}")
-                                    print(f"   ✅ Auto-adjusting end time to: {adjusted_end.strftime('%Y-%m-%d %H:%M:%S')}")
+#                             # If overlap is 15 minutes or less, adjust to end before existing appointment
+#                             if overlap_minutes <= 15:
+#                                 adjusted_end = existing_start
+#                                 # Ensure minimum 30-minute appointment duration
+#                                 min_duration_minutes = 30
+#                                 if (adjusted_end - start_datetime).total_seconds() / 60 >= min_duration_minutes:
+#                                     print(f"   🔧 Minor conflict detected ({overlap_minutes:.0f} min overlap)")
+#                                     print(f"   Existing: {appt_wall_start} - {appt_wall_end}")
+#                                     print(f"   Requested: {requested_start} - {requested_end}")
+#                                     print(f"   ✅ Auto-adjusting end time to: {adjusted_end.strftime('%Y-%m-%d %H:%M:%S')}")
                                     
-                                    return {
-                                        "available": True,
-                                        "adjusted_end_time": adjusted_end,
-                                        "conflict_details": {
-                                            "original_end": end_datetime,
-                                            "adjusted_minutes": overlap_minutes,
-                                            "conflicting_appointment": appt_id
-                                        }
-                                    }
+#                                     return {
+#                                         "available": True,
+#                                         "adjusted_end_time": adjusted_end,
+#                                         "conflict_details": {
+#                                             "original_end": end_datetime,
+#                                             "adjusted_minutes": overlap_minutes,
+#                                             "conflicting_appointment": appt_id
+#                                         }
+#                                     }
                         
-                        # If we can't adjust, it's a real conflict
-                        print(f"   ❌ Time conflict found with appointment {appt_id}")
-                        print(f"   Existing: {appt_wall_start} - {appt_wall_end}")
-                        print(f"   Requested: {requested_start} - {requested_end}")
+#                         # If we can't adjust, it's a real conflict
+#                         print(f"   ❌ Time conflict found with appointment {appt_id}")
+#                         print(f"   Existing: {appt_wall_start} - {appt_wall_end}")
+#                         print(f"   Requested: {requested_start} - {requested_end}")
                         
-                        return {
-                            "available": False,
-                            "adjusted_end_time": None,
-                            "conflict_details": {
-                                "conflicting_appointment": appt_id,
-                                "existing_start": appt_wall_start,
-                                "existing_end": appt_wall_end
-                            }
-                        }
+#                         return {
+#                             "available": False,
+#                             "adjusted_end_time": None,
+#                             "conflict_details": {
+#                                 "conflicting_appointment": appt_id,
+#                                 "existing_start": appt_wall_start,
+#                                 "existing_end": appt_wall_end
+#                             }
+#                         }
                         
-                except ValueError as e:
-                    print(f"   Warning: Could not parse appointment time format: {e}")
-                    continue
+#                 except ValueError as e:
+#                     print(f"   Warning: Could not parse appointment time format: {e}")
+#                     continue
         
-        print(f"   ✅ Time slot is available")
-        return {"available": True, "adjusted_end_time": None, "conflict_details": None}
+#         print(f"   ✅ Time slot is available")
+#         return {"available": True, "adjusted_end_time": None, "conflict_details": None}
         
-    except Exception as e:
-        print(f"   Error checking time slot availability: {e}")
-        # If there's an error checking, allow the booking (fail open)
-        return {"available": True, "adjusted_end_time": None, "conflict_details": None}
+#     except Exception as e:
+#         print(f"   Error checking time slot availability: {e}")
+#         # If there's an error checking, allow the booking (fail open)
+#         return {"available": True, "adjusted_end_time": None, "conflict_details": None}
 
 async def book_patient_appointment(request: BookAppointmentRequest, getkolla_service: GetKollaService):
     """Book a new patient appointment using Kolla API, always creating a new contact."""
@@ -762,9 +756,9 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         try:
             resources = get_kolla_resources()
             # Debug: log available providers for testing
-            debug_available_providers(resources)
-            # Debug: log provider-operatory mappings
-            debug_provider_operatory_mappings()
+            # debug_available_providers(resources)
+            # # Debug: log provider-operatory mappings
+            # debug_provider_operatory_mappings()
         except Exception as e:
             print(f"Error fetching resources: {e}")
             return {
@@ -911,16 +905,16 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "error": "operatory_not_found"
             }
 
-        # 3. Check for existing appointments at the requested time to prevent double booking
-        availability_check = await check_time_slot_availability(start_datetime, end_datetime, operatory_resource.get("name"))
+        # # 3. Check for existing appointments at the requested time to prevent double booking
+        # availability_check = await check_time_slot_availability(start_datetime, end_datetime, operatory_resource.get("name"))
         
-        if not availability_check["available"]:
-            return {
-                "success": False,
-                "message": f"The requested time slot from {request.time} on {request.date} is already booked. Please choose a different time.",
-                "status": "time_slot_unavailable",
-                "error": "time_slot_conflict"
-            }
+        # if not availability_check["available"]:
+        #     return {
+        #         "success": False,
+        #         "message": f"The requested time slot from {request.time} on {request.date} is already booked. Please choose a different time.",
+        #         "status": "time_slot_unavailable",
+        #         "error": "time_slot_conflict"
+        #     }
         
         # Use adjusted end time if provided (for minor conflicts)
         original_end_datetime = end_datetime
