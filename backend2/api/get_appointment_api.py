@@ -54,14 +54,21 @@ async def get_appointment(request: GetAppointmentRequest):
         if not appointments:
             logger.warning(f"No appointments found for patient phone: {request.phone}")
             raise HTTPException(status_code=404, detail="No appointments found for specified patient")
-        # Return the latest appointment
-        latest_appointment = appointments[0]
-    
+        # Remove cancelled appointments
+        non_cancelled_appointments = [a for a in appointments if not a.get("cancelled", False)]
+        if not non_cancelled_appointments:
+            logger.warning(f"No non-cancelled appointments found for patient phone: {request.phone}")
+            raise HTTPException(status_code=404, detail="No non-cancelled appointments found for specified patient")
+
+        # Sort by wall_start_time descending
+        non_cancelled_appointments.sort(key=lambda x: x.get("wall_start_time", ""), reverse=True)
+        latest_appointment = non_cancelled_appointments[0]
+
         return {
             "success": True,
             "patient_phone": request.phone,
             "appointment": latest_appointment,
-            "total_appointments": len(appointments),
+            "total_appointments": len(non_cancelled_appointments),
             "source": "kolla_api_filter"
         }
         
