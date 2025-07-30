@@ -42,6 +42,7 @@ async def get_appointment(request: GetAppointmentRequest):
     Note: Matching is performed by phone number for accurate patient identification.
     """
     try:
+       
         logger.info(f"Fetching appointments for patient phone: {request.phone}")
         
         # Normalize phone number (remove spaces, dashes, etc.)
@@ -55,6 +56,7 @@ async def get_appointment(request: GetAppointmentRequest):
             raise HTTPException(status_code=404, detail="No appointments found for specified patient")
         # Return the latest appointment
         latest_appointment = appointments[0]
+    
         return {
             "success": True,
             "patient_phone": request.phone,
