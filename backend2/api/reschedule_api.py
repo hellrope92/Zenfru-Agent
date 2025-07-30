@@ -263,6 +263,8 @@ async def find_appointment_by_phone(phone_number: str) -> Optional[str]:
         print(f"   ❌ Error finding appointment by phone: {e}")
         return None
 
+from pydantic import Extra
+
 class FlexibleRescheduleRequest(BaseModel):
     appointment_id: str
     date: Optional[str] = None
@@ -271,6 +273,9 @@ class FlexibleRescheduleRequest(BaseModel):
     notes: Optional[str] = None
     new_doctor: Optional[str] = None  # New field for specifying doctor
 
+    class Config:
+        extra = Extra.allow
+
 class RescheduleByPhoneRequest(BaseModel):
     phone: str
     date: Optional[str] = None
@@ -278,6 +283,9 @@ class RescheduleByPhoneRequest(BaseModel):
     end_time: Optional[str] = None
     notes: Optional[str] = None
     new_doctor: Optional[str] = None  # New field for specifying doctor
+
+    class Config:
+        extra = Extra.allow
 
 @router.post("/reschedule_by_phone")
 async def reschedule_by_phone(request: RescheduleByPhoneRequest):
@@ -345,7 +353,6 @@ async def reschedule_by_phone(request: RescheduleByPhoneRequest):
                 "start_time": request.start_time,
                 "end_time": request.end_time,
                 "new_doctor": request.new_doctor,
-                "notes": request.notes,
                 "error_type": "exception",
                 "reschedule_method": "by_phone"
             }
@@ -617,7 +624,7 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 updated_resources = [operatory_resource]
                 original_operatory = doctor_info['operatory_resource']
                 doctor_change_reason = f"Provider updated for new date: {doctor_info['name']}"
-                
+                original_notes = original_appointment.get("notes", "")
                 print(f"   ✅ Updated provider for date: {doctor_info['name']} (ID: {doctor_info['provider_id']})")
                 print(f"   ✅ Updated operatory: {doctor_info['operatory_resource']} (Remote ID: {doctor_info['operatory_remote_id']})")
             else:
@@ -664,8 +671,8 @@ async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
                 "type": "",
                 "display_name": ""
             },
-            "short_description": original_service,
-            "notes": request.notes or "Rescheduled appointment",
+            "short_description": request.notes or "Rescheduled appointment",
+            "notes": original_notes,
             "additional_data": original_appointment.get("additional_data", {})
         }
         
