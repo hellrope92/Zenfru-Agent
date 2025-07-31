@@ -32,4 +32,5 @@ def send_report_request():
         print(f"Error sending request: {e}")
 
 if __name__ == "__main__":
-    send_report_request()
+    # send_report_request()  # Disabled to prevent sending the report request
+    pass
