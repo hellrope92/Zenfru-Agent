@@ -150,44 +150,60 @@ async def generate_manual_report(request: ManualReportRequest):
 async def generate_daily_report_get():
     """Generate and email a daily report for the current day."""
     try:
-        target_date = date.today()
-        
-        # Generate HTML report
-        html_report = patient_logger.generate_daily_report(target_date)
-        
+        tz = pytz.timezone("US/Eastern")
+        now = datetime.now(tz)
+        today = now.date()
+        prev_day = today - timedelta(days=1)
+
+        # Get previous day's interactions after 8:01 PM
+        prev_interactions = patient_logger.get_daily_interactions(prev_day)
+        night_start = datetime.combine(prev_day, datetime.strptime("20:01", "%H:%M").time())
+        prev_night = [i for i in prev_interactions if datetime.fromisoformat(i["timestamp"]) >= night_start]
+
+        # Get today's interactions before 8:00 AM
+        today_interactions = patient_logger.get_daily_interactions(today)
+        morning_end = datetime.combine(today, datetime.strptime("08:00", "%H:%M").time())
+        today_morning = [i for i in today_interactions if datetime.fromisoformat(i["timestamp"]) < morning_end]
+
+        # Merge
+        all_report = prev_night + today_morning
+
+        # Generate HTML report for this custom timeframe
+        stats = patient_logger._calculate_statistics(all_report)
+        # Optionally, you can use a custom HTML generator, but for now reuse daily_report
+        html_report = f"<h2>Night Shift Report (8:01 PM - 8:00 AM)</h2><p>Total interactions: {len(all_night_shift)}</p>"  # Simple header
+        html_report += patient_logger._generate_html_report(today, stats, patient_logger._categorize_interactions(all_night_shift))
+
         # Send email
         email_status = ""
         try:
-            patient_logger._send_email_report(html_report, target_date)
+            patient_logger._send_email_report(html_report, today)
             email_status = "Email sent successfully"
         except Exception as e:
             email_status = f"Email failed: {str(e)}"
-            # Log the error but don't prevent the response
-            print(f"Error sending email for daily report: {e}")
+            print(f"Error sending email for report: {e}")
 
         # Save report to file
-        report_filename = f"daily_report_{target_date.strftime('%Y_%m_%d')}_{datetime.now().strftime('%H%M%S')}.html"
+        report_filename = f"report_{today.strftime('%Y_%m_%d')}_{datetime.now().strftime('%H%M%S')}.html"
         report_path = patient_logger.log_directory / report_filename
-        
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write(html_report)
-        
+
         response = {
             "success": True,
-            "message": f"Report generated for {target_date.strftime('%Y-%m-%d')}",
-            "report_date": target_date.strftime('%Y-%m-%d'),
+            "message": f"Report generated for {today.strftime('%Y-%m-%d')}",
+            "report_date": today.strftime('%Y-%m-%d'),
             "report_file": str(report_path),
             "email_status": email_status,
             "report_size": len(html_report)
         }
 
         if "failed" in email_status:
-             raise HTTPException(status_code=500, detail=response)
+            raise HTTPException(status_code=500, detail=response)
 
         return response
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error generating night shift report: {str(e)}")
 
 @router.get("/interaction_statistics")
 async def get_interaction_statistics(days: Optional[int] = 7):
