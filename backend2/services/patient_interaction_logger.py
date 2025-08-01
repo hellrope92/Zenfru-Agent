@@ -41,30 +41,30 @@ class PatientInteractionLogger:
         self.last_report_sent_date = None  # Track last report sent to prevent duplicates
         self._setup_daily_scheduler()
         
-    # def _load_config(self) -> Dict[str, Any]:
-    #     """Load reporting configuration from file"""
-    #     default_config = {
-    #         "email": {
-    #             "smtp_server": "smtp.gmail.com",
-    #             "smtp_port": 587,
-    #             "use_tls": True,
-    #             "username": "",
-    #             "password": "",
-    #             "recipients": [],
-    #             "sender_name": "Zenfru AI Assistant"
-    #         },
-    #         "reporting": {
-    #             "daily_email_time": "17:00",  # 5:00 PM
-    #             "timezone": "UTC",
-    #             "include_patient_details": True,
-    #             "include_statistics": True,
-    #             "max_retries": 3
-    #         },
-    #         "fallback": {
-    #             "backup_email": "",
-    #             "log_to_file_only": False
-    #         }
-    #     }
+    def _load_config(self) -> Dict[str, Any]:
+        """Load reporting configuration from file"""
+        default_config = {
+            "email": {
+                "smtp_server": "smtp.gmail.com",
+                "smtp_port": 587,
+                "use_tls": True,
+                "username": "",
+                "password": "",
+                "recipients": [],
+                "sender_name": "Zenfru AI Assistant"
+            },
+            "reporting": {
+                "daily_email_time": "17:00",  # 5:00 PM
+                "timezone": "UTC",
+                "include_patient_details": True,
+                "include_statistics": True,
+                "max_retries": 3
+            },
+            "fallback": {
+                "backup_email": "",
+                "log_to_file_only": False
+            }
+        }
         
     #     if self.config_file.exists():
     #         try:
