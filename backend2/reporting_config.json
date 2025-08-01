@@ -7,14 +7,11 @@
     "password": "lmep clnw bond khwr",
     "recipients": [
       "monilmehta5@gmail.com",
-      "kay@zenfru.com",
-      "andriy.o.yuzvyak@gmail.com",
-      "dentalassociatesofjerseycity@gmail.com"
     ],
     "sender_name": "Zenfru AI Assistant"
   },
   "reporting": {
-    "daily_email_time": "08:00",
+    "daily_email_time": "25:00",
     "timezone": "US/Eastern",
     "include_patient_details": true,
     "include_statistics": true,
