@@ -41,90 +41,90 @@ class PatientInteractionLogger:
         self.last_report_sent_date = None  # Track last report sent to prevent duplicates
         self._setup_daily_scheduler()
         
-    def _load_config(self) -> Dict[str, Any]:
-        """Load reporting configuration from file"""
-        default_config = {
-            "email": {
-                "smtp_server": "smtp.gmail.com",
-                "smtp_port": 587,
-                "use_tls": True,
-                "username": "",
-                "password": "",
-                "recipients": [],
-                "sender_name": "Zenfru AI Assistant"
-            },
-            "reporting": {
-                "daily_email_time": "17:00",  # 5:00 PM
-                "timezone": "UTC",
-                "include_patient_details": True,
-                "include_statistics": True,
-                "max_retries": 3
-            },
-            "fallback": {
-                "backup_email": "",
-                "log_to_file_only": False
-            }
-        }
+    # def _load_config(self) -> Dict[str, Any]:
+    #     """Load reporting configuration from file"""
+    #     default_config = {
+    #         "email": {
+    #             "smtp_server": "smtp.gmail.com",
+    #             "smtp_port": 587,
+    #             "use_tls": True,
+    #             "username": "",
+    #             "password": "",
+    #             "recipients": [],
+    #             "sender_name": "Zenfru AI Assistant"
+    #         },
+    #         "reporting": {
+    #             "daily_email_time": "17:00",  # 5:00 PM
+    #             "timezone": "UTC",
+    #             "include_patient_details": True,
+    #             "include_statistics": True,
+    #             "max_retries": 3
+    #         },
+    #         "fallback": {
+    #             "backup_email": "",
+    #             "log_to_file_only": False
+    #         }
+    #     }
         
-        if self.config_file.exists():
-            try:
-                with open(self.config_file, 'r') as f:
-                    loaded_config = json.load(f)
-                    # Merge with default config
-                    for key in default_config:
-                        if key in loaded_config:
-                            default_config[key].update(loaded_config[key])
-                        else:
-                            loaded_config[key] = default_config[key]
-                    return loaded_config
-            except Exception as e:
-                print(f"Error loading config file, using defaults: {e}")
+    #     if self.config_file.exists():
+    #         try:
+    #             with open(self.config_file, 'r') as f:
+    #                 loaded_config = json.load(f)
+    #                 # Merge with default config
+    #                 for key in default_config:
+    #                     if key in loaded_config:
+    #                         default_config[key].update(loaded_config[key])
+    #                     else:
+    #                         loaded_config[key] = default_config[key]
+    #                 return loaded_config
+    #         except Exception as e:
+    #             print(f"Error loading config file, using defaults: {e}")
         
-        # Save default config
-        with open(self.config_file, 'w') as f:
-            json.dump(default_config, f, indent=2)
+    #     # Save default config
+    #     with open(self.config_file, 'w') as f:
+    #         json.dump(default_config, f, indent=2)
         
-        return default_config
+    #     return default_config
     
-    def _setup_daily_scheduler(self):
-        """Setup the daily report scheduler with timezone awareness"""
-        if not EMAIL_AVAILABLE:
-            print("📅 Daily report scheduler disabled - email functionality not available")
-            return
+    # def _setup_daily_scheduler(self):
+    #     """Setup the daily report scheduler with timezone awareness"""
+    #     if not EMAIL_AVAILABLE:
+    #         print("📅 Daily report scheduler disabled - email functionality not available")
+    #         return
             
-        # Import pytz for timezone handling
-        import pytz
+    #     # Import pytz for timezone handling
+    #     import pytz
         
-        # Get timezone from config, default to Eastern
-        timezone_str = self.config["reporting"].get("timezone", "US/Eastern")
-        report_time = self.config["reporting"]["daily_email_time"]
+    #     # Get timezone from config, default to Eastern
+    #     timezone_str = self.config["reporting"].get("timezone", "US/Eastern")
+    #     report_time = self.config["reporting"]["daily_email_time"]
         
-        # Create a timezone-aware scheduler function
-        def timezone_aware_scheduler():
-            tz = pytz.timezone(timezone_str)
-            now = datetime.now(tz)
-            target_hour, target_minute = map(int, report_time.split(":"))
-            today = now.date()
+    #     # Create a timezone-aware scheduler function
+    #     def timezone_aware_scheduler():
+    #         tz = pytz.timezone(timezone_str)
+    #         now = datetime.now(tz)
+    #         target_hour, target_minute = map(int, report_time.split(":"))
+    #         today = now.date()
             
-            # Check if it's the right time (with a 1-minute window) and not already sent today
-            if (now.hour == target_hour and now.minute == target_minute and 
-                self.last_report_sent_date != today):
-                print(f"⏰ Triggering daily report at {now.strftime('%Y-%m-%d %I:%M %p %Z')}")
-                self._generate_and_send_daily_report()
-                self.last_report_sent_date = today
+    #         # Check if it's the right time (with a 1-minute window) and not already sent today
+    #         if (now.hour == target_hour and now.minute == target_minute and 
+    #             self.last_report_sent_date != today):
+    #             print(f"⏰ Triggering daily report at {now.strftime('%Y-%m-%d %I:%M %p %Z')}")
+    #             self._generate_and_send_daily_report()
+    #             self.last_report_sent_date = today
         
-        # Start scheduler in a separate thread that checks every minute
-        def run_scheduler():
-            while True:
-                try:
-                    timezone_aware_scheduler()
-                except Exception as e:
-                    print(f"❌ Error in scheduler: {e}")
-                time.sleep(60)  # Check every minute
+    #     # Start scheduler in a separate thread that checks every minute
+    #     def run_scheduler():
+    #         while True:
+    #             try:
+    #                 timezone_aware_scheduler()
+    #             except Exception as e:
+    #                 print(f"❌ Error in scheduler: {e}")
+    #             time.sleep(60)  # Check every minute
         
-        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-        scheduler_thread.start()
-        print(f"📅 Daily report scheduler started - reports will be sent at {report_time} {timezone_str}")
+    #     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    #     scheduler_thread.start()
+    #     print(f"📅 Daily report scheduler started - reports will be sent at {report_time} {timezone_str}")
     
     def _fetch_appointment_details(self, appointment_id: str) -> Dict[str, Optional[str]]:
         """
