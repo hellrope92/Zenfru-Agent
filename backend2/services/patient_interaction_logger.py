@@ -39,7 +39,7 @@ class PatientInteractionLogger:
         self.config = self._load_config()
         self.cache_service = LocalCacheService()  # Initialize cache service
         self.last_report_sent_date = None  # Track last report sent to prevent duplicates
-        self._setup_daily_scheduler()
+        # self._setup_daily_scheduler()  # Disabled auto report sending
         
     def _load_config(self) -> Dict[str, Any]:
         """Load reporting configuration from file"""
@@ -931,7 +931,9 @@ class PatientInteractionLogger:
                     deep_merge(target[key], value)
                 else:
                     target[key] = value
-        
+
+        if self.config is None:
+            self.config = {}
         deep_merge(self.config, new_config)
         with open(self.config_file, 'w') as f:
             json.dump(self.config, f, indent=2)
