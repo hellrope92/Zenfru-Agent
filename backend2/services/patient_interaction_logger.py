@@ -53,13 +53,7 @@ class PatientInteractionLogger:
                 "recipients": [],
                 "sender_name": "Zenfru AI Assistant"
             },
-            "reporting": {
-                "daily_email_time": "17:00",  # 5:00 PM
-                "timezone": "UTC",
-                "include_patient_details": True,
-                "include_statistics": True,
-                "max_retries": 3
-            },
+
             "fallback": {
                 "backup_email": "",
                 "log_to_file_only": False
