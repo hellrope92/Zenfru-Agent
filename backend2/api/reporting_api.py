@@ -5,6 +5,7 @@ Provides endpoints for configuring reports, viewing statistics, and managing the
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from services.patient_interaction_logger import patient_logger
 import smtplib
@@ -35,6 +36,22 @@ class ManualReportRequest(BaseModel):
     """Request model for generating manual reports"""
     target_date: Optional[str] = None  # YYYY-MM-DD format
     send_email: Optional[bool] = True  # Default to True instead of False
+
+# TEMPORARY: Download any log file from interaction_logs
+@router.get("/download_log/{filename}")
+async def download_log_file(filename: str):
+    """Download a log file from the interaction_logs directory."""
+    file_path = patient_logger.log_directory / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(file_path), media_type="application/json", filename=filename)
+
+async def download_log_file(filename: str):
+    """Download a log file from the interaction_logs directory."""
+    file_path = patient_logger.log_directory / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(file_path), media_type="application/json", filename=filename)
 
 @router.post("/configure_reporting")
 async def configure_reporting(request: ReportingConfigRequest):
