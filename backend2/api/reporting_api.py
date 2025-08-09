@@ -170,9 +170,8 @@ async def generate_daily_report_get():
 
         # Generate HTML report for this custom timeframe
         stats = patient_logger._calculate_statistics(all_report)
-        # Optionally, you can use a custom HTML generator, but for now reuse daily_report
-        html_report = f"<h2>Night Shift Report (8:01 PM - 8:00 AM)</h2><p>Total interactions: {len(all_night_shift)}</p>"  # Simple header
-        html_report += patient_logger._generate_html_report(today, stats, patient_logger._categorize_interactions(all_night_shift))
+        html_report = f"<h2>Night Shift Report (8:01 PM - 8:00 AM)</h2><p>Total interactions: {len(all_report)}</p>"
+        html_report += patient_logger._generate_html_report(today, stats, patient_logger._categorize_interactions(all_report))
 
         # Send email
         email_status = ""
