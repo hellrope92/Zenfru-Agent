@@ -13,6 +13,8 @@ import threading
 import time
 import base64
 
+from scipy import stats
+
 # Import local cache service to fetch appointment details
 from .local_cache_service import LocalCacheService
 
@@ -470,226 +472,230 @@ class PatientInteractionLogger:
         formatted_date = report_date.strftime("%B %d, %Y")
 
         html = f"""
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Patient Interactions Report {formatted_date}</title>
-    <style>
-        body {{
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f7fa;
-            color: #333;
-        }}
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }}
-        .header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px 20px;
-            text-align: center;
-            position: relative;
-        }}
-        .header h1 {{
-            margin: 0 0 10px 0;
-            font-size: 2.5em;
-            font-weight: 700;
-            color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }}
-        .header p {{
-            margin: 0;
-            font-size: 1.2em;
-            opacity: 0.9;
-            color: white;
-        }}
-        .content {{
-            padding: 30px;
-        }}
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-bottom: 40px;
-        }}
-        
-        /* Mobile responsive - stack stats vertically on smaller screens */
-        @media (max-width: 768px) {{
-            .stats-grid {{
-                grid-template-columns: 1fr;
-            }}
-        }}
-        
-        /* Tablet responsive - 2 columns on medium screens */
-        @media (min-width: 769px) and (max-width: 1024px) {{
-            .stats-grid {{
-                grid-template-columns: repeat(2, 1fr);
-            }}
-        }}
-        .stat-card {{
-            background: #f8f9fc;
-            border-left: 4px solid #667eea;
-            padding: 20px;
-            border-radius: 8px;
-        }}
-        .stat-number {{
-            font-size: 2.5em;
-            font-weight: bold;
-            color: #667eea;
-            margin: 0;
-        }}
-        .stat-label {{
-            color: #666;
-            font-size: 0.9em;
-            margin: 5px 0 0 0;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }}
-        .section {{
-            margin-bottom: 40px;
-        }}
-        .section h2 {{
-            color: #333;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }}
-        .interaction-category {{
-            margin-bottom: 30px;
-            border: 1px solid #e1e5e9;
-            border-radius: 8px;
-            overflow: hidden;
-        }}
-        .category-header {{
-            background: #667eea;
-            color: white;
-            padding: 15px 20px;
-            font-weight: 600;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }}
-        .category-count {{
-            background: white;
-            color: #667eea;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 0.9em;
-            font-weight: 600;
-            margin-left: auto;
-        }}
-        .interaction-list {{
-            max-height: 400px;
-            overflow-y: auto;
-        }}
-        .interaction-item {{
-            padding: 15px 20px;
-            border-bottom: 1px solid #f0f0f0;
-            display: grid;
-            grid-template-columns: 50px 1fr 100px;
-            gap: 15px;
-            align-items: start;
-        }}
-        .interaction-item:last-child {{
-            border-bottom: none;
-        }}
-        .interaction-number {{
-            font-weight: bold;
-            color: #667eea;
-            font-size: 1.1em;
-            margin-top: 5px;
-        }}
-        .interaction-info h4 {{
-            margin: 0 0 5px 0;
-            color: #333;
-            font-size: 1em;
-        }}
-        .interaction-info p {{
-            margin: 2px 0;
-            color: #666;
-            font-size: 0.85em;
-            line-height: 1.3;
-        }}
-        .interaction-time {{
-            color: #667eea;
-            font-size: 0.85em;
-            font-weight: 600;
-            text-align: right;
-            margin-top: 5px;
-        }}
-        .footer {{
-            background: #f8f9fc;
-            padding: 20px;
-            text-align: center;
-            color: #666;
-            font-size: 0.9em;
-        }}
-        .no-interactions {{
-            text-align: center;
-            color: #666;
-            font-style: italic;
-            padding: 20px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Zenfru AI</h1>
-            <p>Daily Patient Interactions Report</p>
-            <p>{formatted_date}</p>
-        </div>
-        
-        <div class="content">
-            <div class="section">
-                <h2>📊 Daily Statistics</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-number">{stats['total_calls']}</div>
-                        <div class="stat-label">Total Calls</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">{stats['new_bookings']}</div>
-                        <div class="stat-label">New Bookings</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number">${stats['min_est_revenue']}</div>
-                        <div class="stat-label">Min. Est. Revenue Booked</div>
-                    </div>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Daily Patient Interactions Report {formatted_date}</title>
+            <style>
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background-color: #f5f7fa;
+                    color: #333;
+                }}
+                .container {{
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 30px 20px;
+                    text-align: center;
+                    position: relative;
+                }}
+                .header h1 {{
+                    margin: 0 0 10px 0;
+                    font-size: 2.5em;
+                    font-weight: 700;
+                    color: white;
+                    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                }}
+                .header p {{
+                    margin: 0;
+                    font-size: 1.2em;
+                    opacity: 0.9;
+                    color: white;
+                }}
+                .content {{
+                    padding: 30px;
+                }}
+                /* UPDATED for horizontal layout */
+                .stats-grid {{
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 20px;
+                    margin-bottom: 40px;
+                }}
+                
+                /* Mobile responsive - stack stats vertically on smaller screens */
+                @media (max-width: 768px) {{
+                    .stats-grid {{
+                        flex-direction: column;
+                    }}
+                }}
+                
+                /* Tablet responsive - 2 columns on medium screens */
+                @media (min-width: 769px) and (max-width: 1024px) {{
+                    .stats-grid {{
+                        flex-wrap: wrap;
+                    }}
+                    .stat-card {{
+                        flex: 1 1 calc(50% - 20px);
+                    }}
+                }}
+                .stat-card {{
+                    background: #f8f9fc;
+                    border-left: 4px solid #667eea;
+                    padding: 20px;
+                    border-radius: 8px;
+                    flex: 1;
+                }}
+                .stat-number {{
+                    font-size: 2.5em;
+                    font-weight: bold;
+                    color: #667eea;
+                    margin: 0;
+                }}
+                .stat-label {{
+                    color: #666;
+                    font-size: 0.9em;
+                    margin: 5px 0 0 0;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }}
+                .section {{
+                    margin-bottom: 40px;
+                }}
+                .section h2 {{
+                    color: #333;
+                    border-bottom: 2px solid #667eea;
+                    padding-bottom: 10px;
+                    margin-bottom: 20px;
+                }}
+                .interaction-category {{
+                    margin-bottom: 30px;
+                    border: 1px solid #e1e5e9;
+                    border-radius: 8px;
+                    overflow: hidden;
+                }}
+                .category-header {{
+                    background: #667eea;
+                    color: white;
+                    padding: 15px 20px;
+                    font-weight: 600;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }}
+                .category-count {{
+                    background: white;
+                    color: #667eea;
+                    padding: 5px 10px;
+                    border-radius: 15px;
+                    font-size: 0.9em;
+                    font-weight: 600;
+                    margin-left: auto;
+                }}
+                .interaction-list {{
+                    max-height: 400px;
+                    overflow-y: auto;
+                }}
+                .interaction-item {{
+                    padding: 15px 20px;
+                    border-bottom: 1px solid #f0f0f0;
+                    display: grid;
+                    grid-template-columns: 50px 1fr 100px;
+                    gap: 15px;
+                    align-items: start;
+                }}
+                .interaction-item:last-child {{
+                    border-bottom: none;
+                }}
+                .interaction-number {{
+                    font-weight: bold;
+                    color: #667eea;
+                    font-size: 1.1em;
+                    margin-top: 5px;
+                }}
+                .interaction-info h4 {{
+                    margin: 0 0 5px 0;
+                    color: #333;
+                    font-size: 1em;
+                }}
+                .interaction-info p {{
+                    margin: 2px 0;
+                    color: #666;
+                    font-size: 0.85em;
+                    line-height: 1.3;
+                }}
+                .interaction-time {{
+                    color: #667eea;
+                    font-size: 0.85em;
+                    font-weight: 600;
+                    text-align: right;
+                    margin-top: 5px;
+                }}
+                .footer {{
+                    background: #f8f9fc;
+                    padding: 20px;
+                    text-align: center;
+                    color: #666;
+                    font-size: 0.9em;
+                }}
+                .no-interactions {{
+                    text-align: center;
+                    color: #666;
+                    font-style: italic;
+                    padding: 20px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Zenfru AI</h1>
+                    <p>Daily Patient Interactions Report</p>
+                    <p>{formatted_date}</p>
+                </div>
+                
+                <div class="content">
+                    <div class="section">
+                        <h2>📊 Daily Statistics</h2>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-number">{stats['total_calls']}</div>
+                                <div class="stat-label">Total Calls</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">{stats['new_bookings']}</div>
+                                <div class="stat-label">New Bookings</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${stats['min_est_revenue']}</div>
+                                <div class="stat-label">Min. Est. Revenue Booked</div>
+                            </div>
         """
-        
         # Always add the fourth stat card for consistent layout
         if stats.get('peak_hour') is not None:
             peak_hour = stats['peak_hour']
             peak_time = f"{peak_hour:02d}:00"
             html += f"""
-                    <div class="stat-card">
-                        <div class="stat-number">{peak_time}</div>
-                        <div class="stat-label">Peak Hour ({stats['peak_hour_count']} calls)</div>
-                    </div>
+                            <div class="stat-card">
+                                <div class="stat-number">{peak_time}</div>
+                                <div class="stat-label">Peak Hour ({stats['peak_hour_count']} calls)</div>
+                            </div>
             """
         else:
-            # Show success rate when no peak hour data is available
             html += f"""
-                    <div class="stat-card">
-                        <div class="stat-number">{stats['success_rate']}%</div>
-                        <div class="stat-label">Success Rate</div>
-                    </div>
+                            <div class="stat-card">
+                                <div class="stat-number">{stats['success_rate']}%</div>
+                                <div class="stat-label">Success Rate</div>
+                            </div>
             """
-        
+
         html += """
-                </div>
-            </div>
-        """
+                        </div>
+                    </div>
+                """
+
         
         # Add interaction categories
         html += """
