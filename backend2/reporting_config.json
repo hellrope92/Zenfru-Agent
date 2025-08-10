@@ -14,8 +14,7 @@
     "sender_name": "Zenfru AI Assistant"
   },
   "reporting": {
-    "daily_email_time": "08:00",
-    "timezone": "US/Eastern",
+    "daily_email_time": "05:30",
     "include_patient_details": true,
     "include_statistics": true,
     "max_retries": 3
