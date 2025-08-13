@@ -13,8 +13,6 @@ import threading
 import time
 import base64
 
-from scipy import stats
-
 # Import local cache service to fetch appointment details
 from .local_cache_service import LocalCacheService
 
@@ -334,12 +332,15 @@ class PatientInteractionLogger:
             return []
     
     def generate_daily_report(self, target_date: Optional[date] = None) -> str:
-        """Generate HTML daily report"""
+        """Generate HTML daily report combining previous and current day"""
         if target_date is None:
             target_date = date.today()
-        
-        interactions = self.get_daily_interactions(target_date)
-        
+
+        prev_day = target_date - timedelta(days=1)
+        interactions_prev = self.get_daily_interactions(prev_day)
+        interactions_today = self.get_daily_interactions(target_date)
+        interactions = interactions_prev + interactions_today
+
         # Calculate statistics
         stats = self._calculate_statistics(interactions)
         categorized_interactions = self._categorize_interactions(interactions)
