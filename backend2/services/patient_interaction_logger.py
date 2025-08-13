@@ -332,22 +332,46 @@ class PatientInteractionLogger:
             return []
     
     def generate_daily_report(self, target_date: Optional[date] = None) -> str:
-        """Generate HTML daily report combining previous and current day"""
+        """Generate HTML daily report for previous day 8am US/Eastern to current day 8am US/Eastern (DST-aware)"""
+        import pytz
         if target_date is None:
             target_date = date.today()
 
+        tz = pytz.timezone(self.config["reporting"].get("timezone", "US/Eastern"))
+
+        # Calculate window: prev day 8am to current day 8am (US/Eastern)
         prev_day = target_date - timedelta(days=1)
+        window_start_local = tz.localize(datetime.combine(prev_day, datetime.min.time()) + timedelta(hours=8))
+        window_end_local = tz.localize(datetime.combine(target_date, datetime.min.time()) + timedelta(hours=8))
+        window_start_utc = window_start_local.astimezone(pytz.utc)
+        window_end_utc = window_end_local.astimezone(pytz.utc)
+
+        # Load both days' interactions
         interactions_prev = self.get_daily_interactions(prev_day)
         interactions_today = self.get_daily_interactions(target_date)
-        interactions = interactions_prev + interactions_today
+        all_interactions = interactions_prev + interactions_today
+
+        # Filter by UTC timestamp in window
+        filtered_interactions = []
+        for interaction in all_interactions:
+            ts = interaction.get("timestamp")
+            if not ts:
+                continue
+            try:
+                ts_dt = datetime.fromisoformat(ts)
+                ts_dt = ts_dt.replace(tzinfo=pytz.utc) if ts_dt.tzinfo is None else ts_dt.astimezone(pytz.utc)
+                if window_start_utc <= ts_dt < window_end_utc:
+                    filtered_interactions.append(interaction)
+            except Exception as e:
+                continue
 
         # Calculate statistics
-        stats = self._calculate_statistics(interactions)
-        categorized_interactions = self._categorize_interactions(interactions)
-        
+        stats = self._calculate_statistics(filtered_interactions)
+        categorized_interactions = self._categorize_interactions(filtered_interactions)
+
         # Generate HTML report
         html_report = self._generate_html_report(target_date, stats, categorized_interactions)
-        
+
         return html_report
     
     def _calculate_statistics(self, interactions: List[Dict[str, Any]]) -> Dict[str, Any]:
