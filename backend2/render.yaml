@@ -1,13 +1,13 @@
-services:
-  - type: cron
-    name: daily-report-cron
-    region: singapore # optional
-    plan: free # optional
-    schedule: "30 17 * * *" # Runs at 5:30 PM IST (12:00 PM UTC) daily
-    startCommand: "cd cron_job && pip install -r requirements.txt && python send_report_request.py"
-    envVars:
-      - key: BASE_URL
-        # Make sure to set this to your actual backend service URL on Render
-        value: "https://zenfru-agent.onrender.com"
-      - key: PYTHON_VERSION
-        value: "3.13"
+# services:
+#   - type: cron
+#     name: daily-report-cron
+#     region: singapore # optional
+#     plan: free # optional
+#     schedule: "30 17 * * *" # Runs at 5:30 PM IST (12:00 PM UTC) daily
+#     startCommand: "cd cron_job && pip install -r requirements.txt && python send_report_request.py"
+#     envVars:
+#       - key: BASE_URL
+#         # Make sure to set this to your actual backend service URL on Render
+#         value: "https://zenfru-agent.onrender.com"
+#       - key: PYTHON_VERSION
+#         value: "3.13"

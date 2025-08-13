@@ -41,7 +41,7 @@ class PatientInteractionLogger:
         self.config = self._load_config()
         self.cache_service = LocalCacheService()  # Initialize cache service
         self.last_report_sent_date = None  # Track last report sent to prevent duplicates
-        self._setup_daily_scheduler()
+        # self._setup_daily_scheduler()  # Disabled: Stop daily email cron job
         
     def _load_config(self) -> Dict[str, Any]:
         """Load reporting configuration from file"""
