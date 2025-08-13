@@ -6,11 +6,15 @@ import json
 import uuid
 import requests
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Any, Union
 from fastapi import APIRouter, HTTPException
 from dotenv import load_dotenv
 from pathlib import Path
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from services.patient_interaction_logger import patient_logger
 
 # Load environment variables
 load_dotenv()
@@ -598,6 +602,145 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
         print(f"   Error checking time slot availability: {e}")
         # If there's an error checking, allow the booking (fail open)
         return {"available": True, "adjusted_end_time": None, "conflict_details": None}
+    
+def send_booking_confirmation_email(booking_details: dict):
+        """Send a booking confirmation email using env config and BOOKING_EMAIL_RECIPIENTS."""
+
+        smtp_server = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(os.getenv("EMAIL_SMTP_PORT", 587))
+        smtp_user = os.getenv("EMAIL_USERNAME")
+        smtp_pass = os.getenv("EMAIL_PASSWORD")
+        sender_name = "Zenfru AI Assistant"
+        recipients = [r.strip() for r in os.getenv("BOOKING_EMAIL_RECIPIENTS", "").split(",") if r.strip()]
+        if not recipients or not smtp_user or not smtp_pass:
+            print("[Booking Email] Missing recipients or SMTP credentials, not sending email.")
+            return
+
+        def safe(val):
+            return val if val is not None else "N/A"
+
+        # Use the same style and structure as the daily report for uniformity
+        html = f"""
+        <!DOCTYPE html>
+        <html lang=\"en\">
+        <head>
+            <meta charset=\"UTF-8\">
+            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+            <title>New Booking! - Zenfru AI</title>
+            <style>
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background-color: #f5f7fa;
+                    color: #333;
+                }}
+                .container {{
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 30px 20px;
+                    text-align: center;
+                    position: relative;
+                }}
+                .header h1 {{
+                    margin: 0 0 10px 0;
+                    font-size: 2.5em;
+                    font-weight: 700;
+                    color: white;
+                    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                }}
+                .header p {{
+                    margin: 0;
+                    font-size: 1.2em;
+                    opacity: 0.9;
+                    color: white;
+                }}
+                .content {{
+                    padding: 30px;
+                }}
+                .section {{
+                    margin-bottom: 40px;
+                }}
+                .section h2 {{
+                    color: #333;
+                    border-bottom: 2px solid #667eea;
+                    padding-bottom: 10px;
+                    margin-bottom: 20px;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-bottom: 20px;
+                }}
+                td {{
+                    padding: 10px 8px;
+                    border-bottom: 1px solid #f0f0f0;
+                }}
+                td:first-child {{
+                    font-weight: bold;
+                    color: #667eea;
+                    width: 200px;
+                }}
+                .footer {{
+                    background: #f8f9fc;
+                    padding: 20px;
+                    text-align: center;
+                    color: #666;
+                    font-size: 0.9em;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class=\"container\">
+                <div class=\"header\">
+                    <h1>Zenfru AI</h1>
+                    <p>New Appointment Booking</p>
+                </div>
+                <div class=\"content\">
+                    <div class=\"section\">
+                        <h2>🦷 Booking Details</h2>
+                        <table>
+                            <tr><td>Patient Name:</td><td>{safe(booking_details.get('name'))}</td></tr>
+                            <tr><td>Contact:</td><td>{safe(booking_details.get('contact'))}</td></tr>
+                            <tr><td>Booking Date:</td><td>{safe(booking_details.get('date'))}</td></tr>
+                            <tr><td>Booking Time:</td><td>{safe(booking_details.get('time'))}</td></tr>
+                            <tr><td>Duration (min):</td><td>{safe(booking_details.get('duration'))}</td></tr>
+                            <tr><td>Doctor:</td><td>{safe(booking_details.get('doctor'))}</td></tr>
+                            <tr><td>Service Type:</td><td>{safe(booking_details.get('service_type'))}</td></tr>
+                            <tr><td>Appointment ID:</td><td>{safe(booking_details.get('appointment_id'))}</td></tr>
+                        </table>
+                    </div>
+                </div>
+                <div class=\"footer\">
+                    <p>Booking notification sent automatically by Zenfru AI Assistant.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f"New Appointment Booked: {safe(booking_details.get('name'))} on {safe(booking_details.get('date'))}"
+        msg['From'] = f"{sender_name} <{smtp_user}>"
+        msg['To'] = ", ".join(recipients)
+        msg.attach(MIMEText(html, 'html'))
+
+        try:
+                with smtplib.SMTP(smtp_server, smtp_port) as server:
+                        server.starttls()
+                        server.login(smtp_user, smtp_pass)
+                        server.send_message(msg)
+                print(f"[Booking Email] Sent booking confirmation to: {recipients}")
+        except Exception as e:
+                print(f"[Booking Email] Failed to send: {e}")
 
 async def book_patient_appointment(request: BookAppointmentRequest, getkolla_service: GetKollaService):
     """Book a new patient appointment using Kolla API, always creating a new contact."""
@@ -1018,7 +1161,20 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     "contact_id": contact_id
                 }
             )
-            
+
+            # Send booking confirmation email
+            booking_email_details = {
+                "name": request.name,
+                "contact": contact_number,
+                "date": request.date,
+                "time": request.time,
+                "duration": service_duration,
+                "doctor": request.doctor_for_appointment,
+                "appointment_id": appointment_id,
+                "service_type": request.service_booked
+            }
+            send_booking_confirmation_email(booking_email_details)
+
             # Create appropriate success message based on whether contact was new or existing
             if is_new_contact:
                 success_message = f"New patient appointment successfully booked for {request.name}"
