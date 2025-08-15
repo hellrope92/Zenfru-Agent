@@ -6,3 +6,4 @@ python-dotenv
 pytz
 schedule
 scipy
+pymongo
