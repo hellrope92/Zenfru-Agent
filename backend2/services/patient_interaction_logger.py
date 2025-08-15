@@ -9,8 +9,6 @@ import uuid
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Any, Literal
 from pathlib import Path
-import threading
-import time
 import base64
 
 # Import local cache service to fetch appointment details
@@ -21,7 +19,6 @@ try:
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
-    import schedule
     EMAIL_AVAILABLE = True
 except ImportError:
     EMAIL_AVAILABLE = False
@@ -39,7 +36,6 @@ class PatientInteractionLogger:
         self.config = self._load_config()
         self.cache_service = LocalCacheService()  # Initialize cache service
         self.last_report_sent_date = None  # Track last report sent to prevent duplicates
-        # self._setup_daily_scheduler()  # Disabled: Stop daily email cron job
         
     def _load_config(self) -> Dict[str, Any]:
         """Load reporting configuration from file"""
@@ -86,45 +82,7 @@ class PatientInteractionLogger:
         
         return default_config
     
-    def _setup_daily_scheduler(self):
-        """Setup the daily report scheduler with timezone awareness"""
-        if not EMAIL_AVAILABLE:
-            print("📅 Daily report scheduler disabled - email functionality not available")
-            return
-            
-        # Import pytz for timezone handling
-        import pytz
-        
-        # Get timezone from config, default to Eastern
-        timezone_str = self.config["reporting"].get("timezone", "US/Eastern")
-        report_time = self.config["reporting"]["daily_email_time"]
-        
-        # Create a timezone-aware scheduler function
-        def timezone_aware_scheduler():
-            tz = pytz.timezone(timezone_str)
-            now = datetime.now(tz)
-            target_hour, target_minute = map(int, report_time.split(":"))
-            today = now.date()
-            
-            # Check if it's the right time (with a 1-minute window) and not already sent today
-            if (now.hour == target_hour and now.minute == target_minute and 
-                self.last_report_sent_date != today):
-                print(f"⏰ Triggering daily report at {now.strftime('%Y-%m-%d %I:%M %p %Z')}")
-                self._generate_and_send_daily_report()
-                self.last_report_sent_date = today
-        
-        # Start scheduler in a separate thread that checks every minute
-        def run_scheduler():
-            while True:
-                try:
-                    timezone_aware_scheduler()
-                except Exception as e:
-                    print(f"❌ Error in scheduler: {e}")
-                time.sleep(60)  # Check every minute
-        
-        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-        scheduler_thread.start()
-        print(f"📅 Daily report scheduler started - reports will be sent at {report_time} {timezone_str}")
+
     
     def _fetch_appointment_details(self, appointment_id: str) -> Dict[str, Optional[str]]:
         """
