@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 
 # Import services
+from backend2.api import save_transcripts_api
 from services.getkolla_service import GetKollaService
 from services.availability_service import AvailabilityService
 from services.patient_interaction_logger import patient_logger
@@ -36,7 +37,8 @@ from api import (
     reschedule_api,
     confirm_api,
     get_current,
-    reporting_api
+    reporting_api,
+    save_transcripts_api
 )
 
 # ========== DATA LOADING ==========
@@ -245,6 +247,7 @@ app.include_router(reschedule_api.router)
 app.include_router(confirm_api.router)
 app.include_router(get_current.router, prefix="/api", tags=["datetime"])
 app.include_router(reporting_api.router)
+app.include_router(save_transcripts_api.router)
 # ========== MAIN ==========
 
 if __name__ == "__main__":    
