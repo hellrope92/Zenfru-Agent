@@ -16,7 +16,6 @@ import os
 from pathlib import Path
 
 # Import services
-from backend2.api import save_transcripts_api
 from services.getkolla_service import GetKollaService
 from services.availability_service import AvailabilityService
 from services.patient_interaction_logger import patient_logger
