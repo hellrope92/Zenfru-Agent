@@ -45,17 +45,12 @@ async def get_contact(request: GetContactRequest):
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         
         # Use Kolla API filter to search for contacts by phone number
-        contact_info = await fetch_contact_by_phone_filter(normalized_phone)
-        
-        if contact_info:
-            patient_name = f"{contact_info.get('given_name', '')} {contact_info.get('family_name', '')}".strip()
-            
+        contacts = await fetch_contacts_by_phone_filter(normalized_phone)
+        if contacts:
             return {
                 "success": True,
                 "patient_phone": request.phone,
-                "patient_name": patient_name,
-                "patient_dob": contact_info.get("birth_date"),
-                "contact_info": contact_info,
+                "contacts": contacts,
                 "source": "kolla_api_filter"
             }
         else:
@@ -68,42 +63,22 @@ async def get_contact(request: GetContactRequest):
         logger.error("Error in get_contact", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal error retrieving contact information")
 
-async def fetch_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
-    """Fetch contact information from Kolla API using phone filter"""
+async def fetch_contacts_by_phone_filter(patient_phone: str) -> Optional[list]:
+    """Fetch all contact information from Kolla API using phone filter"""
     try:
         contacts_url = f"{KOLLA_BASE_URL}/contacts?filter=phone=%27{patient_phone}%27"
-        
-        # Build filter for phone number search
-        # Phone number is already normalized (e.g., "5551234567")
-        # filter_query = f"phone=%27{patient_phone}%27"
-        
-        # params = {"filter": filter_query}
-        
-        # print(f"📞 Calling Kolla API: {contacts_url}")
-        # print(f"   Filter: {filter_query}")
-        # print(f"   Normalized phone: {patient_phone}")
-        
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
         print(f"   Response Status: {response.status_code}")
-        
         if response.status_code != 200:
             print(f"   ❌ API Error: {response.text}")
             return None
-            
         contacts_data = response.json()
         contacts = contacts_data.get("contacts", [])
-        
         print(f"   ✅ Found {len(contacts)} contacts matching phone filter")
-        
         if contacts:
-            # Return the first matching contact
-            contact = contacts[0]
-            print(f"   📋 Contact: {contact.get('given_name', '')} {contact.get('family_name', '')}")
-            return contact
-        
+            return contacts
         print(f"   ⚠️ No contact found for phone: {patient_phone}")
         return None
-        
     except Exception as e:
         print(f"   ❌ Error fetching contact by phone filter: {e}")
         return None
@@ -127,14 +102,13 @@ async def refresh_contact_cache(request: GetContactRequest):
     try:
         # Since we're not using cache anymore, this just fetches fresh data
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-        contact_info = await fetch_contact_by_phone_filter(normalized_phone)
-        
+        contacts = await fetch_contacts_by_phone_filter(normalized_phone)
         return {
             "success": True,
             "message": "Contact data refreshed from Kolla API",
             "patient_phone": request.phone,
-            "contact_found": contact_info is not None,
-            "contact_info": contact_info
+            "contact_found": bool(contacts),
+            "contacts": contacts
         }
         
     except Exception as e:
@@ -153,14 +127,13 @@ async def search_contacts(
         if phone:
             # Use phone-based search
             normalized_phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-            contact_info = await fetch_contact_by_phone_filter(normalized_phone)
-            
-            if contact_info:
+            contacts = await fetch_contacts_by_phone_filter(normalized_phone)
+            if contacts:
                 return {
                     "success": True,
                     "search_type": "phone",
                     "search_value": phone,
-                    "contacts": [contact_info]
+                    "contacts": contacts
                 }
             else:
                 return {
