@@ -186,7 +186,7 @@ def find_existing_contact_by_id(contact_id: str) -> Optional[str]:
 
     try:
         # Use Kolla filter API like in get_contact_api.py
-        contacts_url = f"{KOLLA_BASE_URL}/v1/{contact_id}"
+        contacts_url = f"{KOLLA_BASE_URL}/{contact_id}"
         
         print(f"🔍 Searching for existing contact with ID: {contact_id}")
         print(f"📞 Calling Kolla API: {contacts_url}")
