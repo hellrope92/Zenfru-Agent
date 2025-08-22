@@ -34,6 +34,7 @@ class ContactInfo(BaseModel):
 
 class BookAppointmentRequest(BaseModel):
     name: str
+    contact_id: str # existing contact ID to link
     contact: Union[str, Dict[str, Any], ContactInfo]  # Accept string, dict, or ContactInfo
     day: str
     date: str  # Added date field

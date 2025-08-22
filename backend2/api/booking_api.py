@@ -179,39 +179,31 @@ def parse_contact_info(contact_data: Union[str, Dict[str, Any]]) -> Dict[str, st
     else:
         return {"phone": "", "email": ""}
 
-def find_existing_contact_by_phone(phone_number: str) -> Optional[str]:
-    """Find existing contact by phone number using Kolla filter, return contact_id if found."""
-    if not phone_number:
+def find_existing_contact_by_id(contact_id: str) -> Optional[str]:
+    """Find existing contact by ID using Kolla filter, return contact_id if found."""
+    if not contact_id:
         return None
-    
-    # Clean phone number (remove spaces, dashes, parentheses)
-    clean_phone = ''.join(filter(str.isdigit, phone_number))
     
     try:
         # Use Kolla filter API like in get_contact_api.py
-        contacts_url = f"{KOLLA_BASE_URL}/contacts?filter=phone=%27{clean_phone}%27"
+        contacts_url = f"{KOLLA_BASE_URL}/v1/contacts/{contact_id}"
         
-        print(f"🔍 Searching for existing contact with phone: {phone_number} (cleaned: {clean_phone})")
+        print(f"🔍 Searching for existing contact with ID: {contact_id}")
         print(f"📞 Calling Kolla API: {contacts_url}")
         
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=30)
         print(f"   Response Status: {response.status_code}")
         
         if response.status_code == 200:
-            contacts_data = response.json()
-            contacts = contacts_data.get('contacts', [])
+            contact = response.json()
             
-            print(f"   ✅ Found {len(contacts)} contacts matching phone filter")
-            
-            if contacts:
-                # Return the first matching contact's ID
-                contact = contacts[0]
+            if contact:
                 contact_id = contact.get('name')
                 contact_name = f"{contact.get('given_name', '')} {contact.get('family_name', '')}".strip()
-                print(f"   📋 Found existing contact: {contact_name} (ID: {contact_id}) with phone: {clean_phone}")
+                print(f"   📋 Found existing contact: {contact_name} (ID: {contact_id})")
                 return contact_id
             else:
-                print(f"   ❌ No existing contact found with phone: {phone_number}")
+                print(f"   ❌ No existing contact found with ID: {contact_id}")
                 return None
         else:
             print(f"   ❌ API Error: {response.status_code}, {response.text}")
@@ -463,20 +455,6 @@ def find_resource(resources, resource_type, display_name=None):
                 return r
     return None
 
-# def debug_available_providers(resources):
-#     """Debug function to log all available providers"""
-#     print(f"🔍 DEBUG: Available providers in Kolla:")
-#     providers = [r for r in resources if r.get('type') == 'PROVIDER']
-#     for provider in providers:
-#         print(f"   - Name: {provider.get('name')} | Remote ID: {provider.get('remote_id')} | Display: '{provider.get('display_name')}' | Position: {provider.get('additional_data', {}).get('position', 'N/A')}")
-#     return providers
-
-# def debug_provider_operatory_mappings():
-#     """Debug function to show provider-operatory mappings"""
-#     print(f"🔍 DEBUG: Provider-Operatory Mappings:")
-#     for provider_id, operatory_name in PROVIDER_OPERATORY_MAPPING.items():
-#         operatory_remote_id = OPERATORY_REMOTE_ID_MAPPING.get(operatory_name, "N/A")
-#         print(f"   Provider {provider_id} → {operatory_name} (remote_id: {operatory_remote_id})")
 
 async def check_time_slot_availability(start_datetime: datetime, end_datetime: datetime, operatory_name: str = None) -> dict:
     """
@@ -746,6 +724,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
     """Book a new patient appointment using Kolla API, always creating a new contact."""
     print(f"\U0001F4C5 BOOK_PATIENT_APPOINTMENT:")
     print(f"   Name: {request.name}")
+    print(f"   ID: {request.contact_id}")
     print(f"   Contact: {request.contact}")
     print(f"   Requested date: {request.date}")
     print(f"   Day: {request.day}")
@@ -834,40 +813,27 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "display_name": ""
             }
 
-        # Check if contact already exists by phone number before creating new one
-        contact_id = None
-        phone_number = None
         is_new_contact = False
+        contact_id = request.contact_id if request.contact_id else 'x'  # 'x' indicates new contact
+
+        if contact_id not in ['x', 'X']:
+            print(f"🔍 Checking for existing contact with ID: {contact_id}")
+            contact_id = find_existing_contact_by_id(contact_id)
         
-        # Extract phone number from contact info
-        if 'phone_numbers' in contact_info and contact_info['phone_numbers']:
-            phone_number = contact_info['phone_numbers'][0].get('number', '')
-        elif 'number' in contact_info:
-            phone_number = contact_info['number']
-        elif isinstance(request.contact, str):
-            phone_number = request.contact
-        elif isinstance(request.contact, dict):
-            phone_number = request.contact.get('number') or request.contact.get('phone_number')
-        
-        if phone_number:
-            print(f"🔍 Checking for existing contact with phone: {phone_number}")
-            contact_id = find_existing_contact_by_phone(phone_number)
-        
-        # Create new contact only if one doesn't exist
-        if not contact_id:
+        else:
             print(f"   Creating new patient contact in Kolla...")
             contact_id = create_kolla_contact(contact_info, request.date)
             is_new_contact = True
-            if not contact_id:
+            if not contact_id or contact_id in ['x', 'X']:
                 return {
                     "success": False,
                     "message": "Failed to create new patient contact in Kolla.",
                     "status": "error",
                     "error": "contact_creation_failed"
                 }
-        else:
-            print(f"   Using existing contact: {contact_id}")
-            is_new_contact = False
+            else:
+                print(f"   Using existing contact: {contact_id}")
+                is_new_contact = False
 
         # 2. Prepare appointment data for Kolla
         try:
@@ -1060,7 +1026,6 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         #     }
         
         # Use adjusted end time if provided (for minor conflicts)
-        original_end_datetime = end_datetime
         # if availability_check["adjusted_end_time"]:
         #     end_datetime = availability_check["adjusted_end_time"]
         #     adjusted_minutes = availability_check["conflict_details"]["adjusted_minutes"]
