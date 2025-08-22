@@ -183,10 +183,14 @@ def find_existing_contact_by_id(contact_id: str) -> Optional[str]:
     """Find existing contact by ID using Kolla filter, return contact_id if found."""
     if not contact_id:
         return None
-    
+
+    # If contact_id is a string like 'contacts/3478', extract the numeric part
+    if isinstance(contact_id, str) and contact_id.startswith('contacts/'):
+        parsed_contact_id = contact_id.split('/', 1)[-1]
+
     try:
         # Use Kolla filter API like in get_contact_api.py
-        contacts_url = f"{KOLLA_BASE_URL}/v1/contacts/{contact_id}"
+        contacts_url = f"{KOLLA_BASE_URL}/v1/contacts/{parsed_contact_id}"
         
         print(f"🔍 Searching for existing contact with ID: {contact_id}")
         print(f"📞 Calling Kolla API: {contacts_url}")
