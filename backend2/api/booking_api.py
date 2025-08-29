@@ -396,7 +396,7 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
     
     try:
         response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(payload), timeout=30)
-    logging.info(f"Contact creation response: {response.status_code}, {response.text}")
+        logging.info(f"Contact creation response: {response.status_code}, {response.text}")
         
         if response.status_code in (200, 201):
             contact_id = response.json().get('name')
