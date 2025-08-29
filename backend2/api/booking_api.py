@@ -260,8 +260,8 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
     # Set gender - handle various input formats
     logging.info(f"👤 Processing gender: '{payload.get('gender', 'NOT_FOUND')}'")
     if 'gender' not in payload or not payload['gender']:
-    payload['gender'] = 'GENDER_UNSPECIFIED'
-    logging.info(f"   ➜ Set to default: GENDER_UNSPECIFIED")
+        payload['gender'] = 'GENDER_UNSPECIFIED'
+        logging.info(f"   ➜ Set to default: GENDER_UNSPECIFIED")
     else:
         # Normalize gender values to match Kolla's expected format
         gender_value = str(payload['gender']).upper()
