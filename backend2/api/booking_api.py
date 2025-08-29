@@ -79,8 +79,7 @@ def load_schedule():
     try:
         with open(schedule_file, 'r') as f:
             return json.load(f)
-    except Exception as e:
-        
+    except Exception as e:        
         logging.error(f"❌ Error loading schedule.json: {e}")
         return {}
 
@@ -97,8 +96,7 @@ def get_provider_for_appointment_date(appointment_date: str) -> Optional[str]:
         
         # Get doctor name from schedule
         doctor_name = day_schedule.get("doctor", "")
-        if not doctor_name:
-            
+        if not doctor_name:            
             logging.warning(f"⚠️ No doctor scheduled for {day_name}")
             return None
         # Map doctor name to provider ID
@@ -109,8 +107,7 @@ def get_provider_for_appointment_date(appointment_date: str) -> Optional[str]:
         
         logging.info(f"📅 Auto-selected provider for {day_name} ({appointment_date}): {doctor_name} -> {provider_id}")
         return provider_id
-    except Exception as e:
-        
+    except Exception as e:        
         logging.error(f"❌ Error determining provider for date {appointment_date}: {e}")
         return None
 
@@ -431,8 +428,7 @@ def update_contact_preferred_provider(contact_id: str, preferred_provider: dict)
             logging.info(f"✅ Updated preferred provider for contact {contact_id}")
         else:
             logging.warning(f"⚠️ Failed to update preferred provider: {response.status_code}, {response.text}")
-    except Exception as e:
-        
+    except Exception as e:        
         logging.warning(f"⚠️ Error updating preferred provider: {e}")
 
 def get_kolla_resources():
@@ -471,8 +467,7 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
         url = f"{KOLLA_BASE_URL}/appointments"
         response = requests.get(url, headers=KOLLA_HEADERS, timeout=10)
         
-        if response.status_code != 200:
-            
+        if response.status_code != 200:           
             logging.error(f"Error fetching appointments for availability check: {response.status_code}")
             # If we can't check, allow the booking (fail open)
             return {"available": True, "adjusted_end_time": None, "conflict_details": None}
@@ -483,8 +478,7 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
         # Convert our datetime to the format we expect from Kolla
         requested_start = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
         requested_end = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
-        
-        
+
         logging.info(f"   Checking availability for: {requested_start} - {requested_end}")
         if operatory_name:
             logging.info(f"   In operatory: {operatory_name}")
@@ -569,15 +563,13 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
                             }
                         }
                         
-                except ValueError as e:
-                    
+                except ValueError as e:                    
                     logging.warning(f"   Warning: Could not parse appointment time format: {e}")
                     continue
         
         logging.info(f"   ✅ Time slot is available")
         return {"available": True, "adjusted_end_time": None, "conflict_details": None}
-    except Exception as e:
-        
+    except Exception as e:        
         logging.error(f"   Error checking time slot availability: {e}")
         # If there's an error checking, allow the booking (fail open)
         return {"available": True, "adjusted_end_time": None, "conflict_details": None}
@@ -591,8 +583,7 @@ def send_booking_confirmation_email(booking_details: dict):
         smtp_pass = os.getenv("EMAIL_PASSWORD")
         sender_name = "Zenfru AI Assistant"
         recipients = [r.strip() for r in os.getenv("BOOKING_EMAIL_RECIPIENTS", "").split(",") if r.strip()]
-        if not recipients or not smtp_user or not smtp_pass:
-            
+        if not recipients or not smtp_user or not smtp_pass:            
             logging.warning("[Booking Email] Missing recipients or SMTP credentials, not sending email.")
             return
 
@@ -717,11 +708,9 @@ def send_booking_confirmation_email(booking_details: dict):
                 with smtplib.SMTP(smtp_server, smtp_port) as server:
                         server.starttls()
                         server.login(smtp_user, smtp_pass)
-                        server.send_message(msg)
-                
+                        server.send_message(msg)                
                 logging.info(f"[Booking Email] Sent booking confirmation to: {recipients}")
-        except Exception as e:
-                
+        except Exception as e:                
                 logging.error(f"[Booking Email] Failed to send: {e}")
 
 async def book_patient_appointment(request: BookAppointmentRequest, getkolla_service: GetKollaService):
@@ -782,7 +771,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
 
         # Extract address fields from request if provided, and they are not already in contact_info
         address_fields = ['street_address', 'city', 'postal_code', 'country_code']
-    logging.info(f"🏠 Extracting address fields from request...")
+        logging.info(f"🏠 Extracting address fields from request...")
         for field in address_fields:
             if hasattr(request, field) and getattr(request, field) is not None and field not in contact_info:
                 contact_info[field] = getattr(request, field)
@@ -1180,8 +1169,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     "is_new_contact": is_new_contact
                 }
             }
-        else:
-            
+        else:            
             logging.error(f"   ❌ Failed to book appointment through Kolla API")
             
             # Log failed booking interaction
@@ -1213,8 +1201,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "status": "failed",
                 "error": response.text
             }
-    except Exception as e:
-        
+    except Exception as e:        
         logging.error(f"   ❌ Error booking appointment: {e}")
         
         # Determine if is_new_contact variable exists in scope for error logging
@@ -1251,13 +1238,11 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
 def get_operatory_for_provider(provider_remote_id: str) -> Optional[Dict[str, str]]:
     """Get the operatory resource information for a specific provider"""
     operatory_name = PROVIDER_OPERATORY_MAPPING.get(provider_remote_id)
-    if not operatory_name:
-        
+    if not operatory_name:        
         logging.warning(f"⚠️ No operatory mapping found for provider {provider_remote_id}")
         return None
     operatory_remote_id = OPERATORY_REMOTE_ID_MAPPING.get(operatory_name)
-    if not operatory_remote_id:
-        
+    if not operatory_remote_id:        
         logging.warning(f"⚠️ No remote_id mapping found for operatory {operatory_name}")
         return None
     return {

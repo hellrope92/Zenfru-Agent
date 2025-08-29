@@ -36,7 +36,7 @@ async def get_current() -> CurrentDateTimeResponse:
         timezone = str(now.tzinfo)
         
     
-    logging.info(f"🕐 Current datetime requested: {current_day}, {current_date} at {now.strftime('%H:%M:%S')} {timezone}")
+        logging.info(f"🕐 Current datetime requested: {current_day}, {current_date} at {now.strftime('%H:%M:%S')} {timezone}")
         
         return CurrentDateTimeResponse(
             success=True,
@@ -48,7 +48,7 @@ async def get_current() -> CurrentDateTimeResponse:
         
     except Exception as e:
     
-    logging.error(f"❌ Error getting current datetime: {str(e)}")
+        logging.error(f"❌ Error getting current datetime: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get current datetime: {str(e)}")
 
 # Alternative endpoint with different path structure if needed

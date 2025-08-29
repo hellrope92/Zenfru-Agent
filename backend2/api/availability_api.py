@@ -99,7 +99,7 @@ async def fetch_schedule_from_kolla(start_date: str, end_date: str) -> Optional[
         }
         
     except Exception as e:    
-    logging.error(f"Error fetching schedule from Kolla API: {e}")
+        logging.error(f"Error fetching schedule from Kolla API: {e}")
         return None
 
 async def process_cached_schedule_data(cached_data: Dict[str, Any], dates_to_check: List[str]) -> Dict[str, Any]:

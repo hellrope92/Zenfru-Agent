@@ -93,14 +93,14 @@ If you have any questions, please call us at (555) 123-4567.
         """.strip()
         
         # Simulate SMS sending (replace with actual SMS service)    
-    logging.info(f"SMS would be sent to {form_data['phone_number']}: {message}")
+        logging.info(f"SMS would be sent to {form_data['phone_number']}: {message}")
         
         # For demo purposes, always return True
         # In production, this would return the actual SMS delivery status
         return True
         
     except Exception as e:    
-    logging.error(f"Error sending SMS: {e}")
+        logging.error(f"Error sending SMS: {e}")
         return False
 
 async def log_form_sent_event(form_data: Dict[str, Any]):

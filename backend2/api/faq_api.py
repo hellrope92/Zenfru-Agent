@@ -22,7 +22,7 @@ def load_knowledge_base() -> Dict[str, Any]:
             return json.load(f)
     except Exception as e:
     
-    logging.error(f"Error loading knowledge base: {e}")
+        logging.error(f"Error loading knowledge base: {e}")
         return {}
 
 @router.post("/answer_faq_query")
@@ -259,9 +259,8 @@ async def log_faq_query(query: str, category: str, answer: str):
         with open(log_file, 'w') as f:
             json.dump(logs, f, indent=2)
             
-    except Exception as e:
-    
-    logging.error(f"Error logging FAQ query: {e}")
+    except Exception as e:    
+        logging.error(f"Error logging FAQ query: {e}")
 
 @router.get("/faq/categories")
 async def get_faq_categories():
