@@ -68,19 +68,24 @@ async def fetch_contacts_by_phone_filter(patient_phone: str) -> Optional[list]:
     try:
         contacts_url = f"{KOLLA_BASE_URL}/contacts?filter=phone=%27{patient_phone}%27"
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
-        print(f"   Response Status: {response.status_code}")
+    
+    logging.info(f"   Response Status: {response.status_code}")
         if response.status_code != 200:
-            print(f"   ❌ API Error: {response.text}")
+            
+            logging.error(f"   ❌ API Error: {response.text}")
             return None
         contacts_data = response.json()
         contacts = contacts_data.get("contacts", [])
-        print(f"   ✅ Found {len(contacts)} contacts matching phone filter")
+    
+    logging.info(f"   ✅ Found {len(contacts)} contacts matching phone filter")
         if contacts:
             return contacts
-        print(f"   ⚠️ No contact found for phone: {patient_phone}")
+    
+    logging.warning(f"   ⚠️ No contact found for phone: {patient_phone}")
         return None
     except Exception as e:
-        print(f"   ❌ Error fetching contact by phone filter: {e}")
+    
+    logging.error(f"   ❌ Error fetching contact by phone filter: {e}")
         return None
 
 @router.get("/get_contact/{patient_name}/{patient_dob}")
@@ -181,27 +186,34 @@ async def fetch_contact_by_name_filter(patient_name: str) -> Optional[List[Dict[
         
         params = {"filter": filter_query}
         
-        print(f"📞 Calling Kolla API: {contacts_url}")
-        print(f"   Filter: {filter_query}")
+    
+    logging.info(f"📞 Calling Kolla API: {contacts_url}")
+    
+    logging.info(f"   Filter: {filter_query}")
         
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, params=params, timeout=10)
-        print(f"   Response Status: {response.status_code}")
+    
+    logging.info(f"   Response Status: {response.status_code}")
         
         if response.status_code != 200:
-            print(f"   ❌ API Error: {response.text}")
+            
+            logging.error(f"   ❌ API Error: {response.text}")
             return None
             
         contacts_data = response.json()
         contacts = contacts_data.get("contacts", [])
         
-        print(f"   ✅ Found {len(contacts)} contacts matching name filter")
+    
+    logging.info(f"   ✅ Found {len(contacts)} contacts matching name filter")
         
         if contacts:
             return contacts
         
-        print(f"   ⚠️ No contact found for name: {patient_name}")
+    
+    logging.warning(f"   ⚠️ No contact found for name: {patient_name}")
         return None
         
     except Exception as e:
-        print(f"   ❌ Error fetching contact by name filter: {e}")
+    
+    logging.error(f"   ❌ Error fetching contact by name filter: {e}")
         return None

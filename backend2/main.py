@@ -14,11 +14,13 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import os
 from pathlib import Path
+import logging
 
 # Import services
 from services.getkolla_service import GetKollaService
 from services.availability_service import AvailabilityService
 from services.patient_interaction_logger import patient_logger
+from services.supabase_log_handler import SupabaseLogHandler
 
 # Import API routers
 from api import (
@@ -40,6 +42,23 @@ from api import (
     save_transcripts_api
 )
 
+
+# ========== LOGGING SETUP ==========
+def setup_logging():
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    for h in logger.handlers[:]:
+        logger.removeHandler(h)
+    if os.getenv("RENDER", "false").lower() == "true":
+        handler = SupabaseLogHandler()
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+setup_logging()
+
 # ========== DATA LOADING ==========
 
 def load_json_file(filename: str) -> Dict[str, Any]:
@@ -49,10 +68,10 @@ def load_json_file(filename: str) -> Dict[str, Any]:
         with open(file_path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"❌ Error: {filename} not found at {file_path}")
+        logging.error(f"❌ Error: {filename} not found at {file_path}")
         return {}
     except json.JSONDecodeError:
-        print(f"❌ Error: Invalid JSON in {filename}")
+        logging.error(f"❌ Error: Invalid JSON in {filename}")
         return {}
 
 # Load data files
@@ -60,10 +79,10 @@ SCHEDULE = load_json_file("schedule.json")
 BOOKINGS = load_json_file("bookings.json")
 KNOWLEDGE_BASE = load_json_file("knowledge_base.json")
 
-print(f"📁 Loaded data:")
-print(f"   Schedule: {len(SCHEDULE)} days configured")
-print(f"   Bookings: {len(BOOKINGS)} existing appointments")
-print(f"   Knowledge Base: {len(KNOWLEDGE_BASE)} sections loaded")
+logging.info(f"📁 Loaded data:")
+logging.info(f"   Schedule: {len(SCHEDULE)} days configured")
+logging.info(f"   Bookings: {len(BOOKINGS)} existing appointments")
+logging.info(f"   Knowledge Base: {len(KNOWLEDGE_BASE)} sections loaded")
 
 # ========== RUNTIME STORAGE ==========
 
@@ -117,7 +136,7 @@ try:
     from services.availability_service import SimpleAvailabilityService
     simple_availability_service = SimpleAvailabilityService()
 except ImportError:
-    print("⚠️ SimpleAvailabilityService not found, using fallback")
+    logging.warning("⚠️ SimpleAvailabilityService not found, using fallback")
     simple_availability_service = None
 
 # ========== ENHANCED API ENDPOINTS WITH DEPENDENCY INJECTION ==========
@@ -250,59 +269,59 @@ app.include_router(save_transcripts_api.router)
 # ========== MAIN ==========
 
 if __name__ == "__main__":    
-    print("🦷 Starting BrightSmile Dental AI Assistant - Modular Backend")
-    print("📋 Available endpoints organized by modules:")
-    print()
-    print("📅 Schedule & Availability Module:")
-    print("   - GET  /api/availability?date=YYYY-MM-DD (returns 3 days)")
-    print("   - GET  /api/availability/refresh")
-    print()
-    print("📝 Booking & Reschedule Module:")
-    print("   - POST /api/book_patient_appointment")
-    print("   - POST /api/reschedule_patient_appointment (flexible agent format)")
-    print("   - POST /api/reschedule_appointment (legacy)")
-    print()
-    print("📋 Core Patient APIs (with local caching):")
-    print("   - POST /api/get_appointment (name, dob) - 24hr cache")
-    print("   - GET  /api/get_appointment/{name}/{dob}")
-    print("   - POST /api/get_contact (name, dob) - 24hr cache")
-    print("   - GET  /api/get_contact/{name}/{dob}")
-    print()
-    print("👥 Patient Services Module:")
-    print("   - POST /api/send_new_patient_form")
-    print("   - POST /api/log_callback_request")
-    print("   - GET  /api/callback_requests")
-    print("   - PUT  /api/callback_requests/{id}/status")
-    print("   - POST /api/log_conversation_summary")
-    print("   - GET  /api/conversation_logs")
-    print("   - GET  /api/conversation_logs/analytics")
-    print()
-    print("🔧 Debug Module:")
-    print("   - GET  /api/health")
-    print("   - GET  /api/getkolla/test")
-    print("   - GET  /api/debug/* (for testing)")
-    print()
-    print("📈 Reporting & Analytics Module:")
-    print("   - POST /api/configure_reporting (setup email/config)")
-    print("   - GET  /api/reporting_config (view current config)")
-    print("   - POST /api/generate_report (manual report generation)")
-    print("   - GET  /api/interaction_statistics?days=7")
-    print("   - GET  /api/daily_interactions/{YYYY-MM-DD}")
-    print("   - GET  /api/interaction_summary (today's summary)")
-    print("   - POST /api/test_email (test email configuration)")
-    print("   - GET  /api/log_files (list available log files)")
-    print()
-    print(f"📊 Data Status:")
-    print(f"   Schedule: {len(SCHEDULE)} days loaded")
-    print(f"   Existing Bookings: {len(BOOKINGS)} appointments")
-    print(f"   Knowledge Base: {len(KNOWLEDGE_BASE)} sections")
-    print()
-    print("📝 Patient Interaction Logging:")
-    print(f"   Log Directory: {patient_logger.log_directory}")
-    print(f"   Daily Report Time: {patient_logger.config['reporting']['daily_email_time']}")
-    print(f"   Email Recipients: {len(patient_logger.config['email']['recipients'])} configured")
-    print("   Automatic logging enabled for all patient interactions")
-    print()
+    logging.info("🦷 Starting BrightSmile Dental AI Assistant - Modular Backend")
+    logging.info("📋 Available endpoints organized by modules:")
+    logging.info("")
+    logging.info("📅 Schedule & Availability Module:")
+    logging.info("   - GET  /api/availability?date=YYYY-MM-DD (returns 3 days)")
+    logging.info("   - GET  /api/availability/refresh")
+    logging.info("")
+    logging.info("📝 Booking & Reschedule Module:")
+    logging.info("   - POST /api/book_patient_appointment")
+    logging.info("   - POST /api/reschedule_patient_appointment (flexible agent format)")
+    logging.info("   - POST /api/reschedule_appointment (legacy)")
+    logging.info("")
+    logging.info("📋 Core Patient APIs (with local caching):")
+    logging.info("   - POST /api/get_appointment (name, dob) - 24hr cache")
+    logging.info("   - GET  /api/get_appointment/{name}/{dob}")
+    logging.info("   - POST /api/get_contact (name, dob) - 24hr cache")
+    logging.info("   - GET  /api/get_contact/{name}/{dob}")
+    logging.info("")
+    logging.info("👥 Patient Services Module:")
+    logging.info("   - POST /api/send_new_patient_form")
+    logging.info("   - POST /api/log_callback_request")
+    logging.info("   - GET  /api/callback_requests")
+    logging.info("   - PUT  /api/callback_requests/{id}/status")
+    logging.info("   - POST /api/log_conversation_summary")
+    logging.info("   - GET  /api/conversation_logs")
+    logging.info("   - GET  /api/conversation_logs/analytics")
+    logging.info("")
+    logging.info("🔧 Debug Module:")
+    logging.info("   - GET  /api/health")
+    logging.info("   - GET  /api/getkolla/test")
+    logging.info("   - GET  /api/debug/* (for testing)")
+    logging.info("")
+    logging.info("📈 Reporting & Analytics Module:")
+    logging.info("   - POST /api/configure_reporting (setup email/config)")
+    logging.info("   - GET  /api/reporting_config (view current config)")
+    logging.info("   - POST /api/generate_report (manual report generation)")
+    logging.info("   - GET  /api/interaction_statistics?days=7")
+    logging.info("   - GET  /api/daily_interactions/{YYYY-MM-DD}")
+    logging.info("   - GET  /api/interaction_summary (today's summary)")
+    logging.info("   - POST /api/test_email (test email configuration)")
+    logging.info("   - GET  /api/log_files (list available log files)")
+    logging.info("")
+    logging.info(f"📊 Data Status:")
+    logging.info(f"   Schedule: {len(SCHEDULE)} days loaded")
+    logging.info(f"   Existing Bookings: {len(BOOKINGS)} appointments")
+    logging.info(f"   Knowledge Base: {len(KNOWLEDGE_BASE)} sections")
+    logging.info("")
+    logging.info("📝 Patient Interaction Logging:")
+    logging.info(f"   Log Directory: {patient_logger.log_directory}")
+    logging.info(f"   Daily Report Time: {patient_logger.config['reporting']['daily_email_time']}")
+    logging.info(f"   Email Recipients: {len(patient_logger.config['email']['recipients'])} configured")
+    logging.info("   Automatic logging enabled for all patient interactions")
+    logging.info("")
     
     port = int(os.environ.get("PORT", 8000))  # default to 8000 locally
     uvicorn.run(app, host="0.0.0.0", port=port)

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
-
+import logging
 from api.models import AnswerFAQRequest
 
 router = APIRouter(prefix="/api", tags=["faq"])
@@ -21,7 +21,8 @@ def load_knowledge_base() -> Dict[str, Any]:
         with open(knowledge_base_file, 'r') as f:
             return json.load(f)
     except Exception as e:
-        print(f"Error loading knowledge base: {e}")
+    
+    logging.error(f"Error loading knowledge base: {e}")
         return {}
 
 @router.post("/answer_faq_query")
@@ -259,7 +260,8 @@ async def log_faq_query(query: str, category: str, answer: str):
             json.dump(logs, f, indent=2)
             
     except Exception as e:
-        print(f"Error logging FAQ query: {e}")
+    
+    logging.error(f"Error logging FAQ query: {e}")
 
 @router.get("/faq/categories")
 async def get_faq_categories():

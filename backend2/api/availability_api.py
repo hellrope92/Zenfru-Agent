@@ -8,7 +8,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException, Query
-
+import logging
 from services.local_cache_service import LocalCacheService
 from services.availability_service import AvailabilityService
 
@@ -98,8 +98,8 @@ async def fetch_schedule_from_kolla(start_date: str, end_date: str) -> Optional[
             }
         }
         
-    except Exception as e:
-        print(f"Error fetching schedule from Kolla API: {e}")
+    except Exception as e:    
+    logging.error(f"Error fetching schedule from Kolla API: {e}")
         return None
 
 async def process_cached_schedule_data(cached_data: Dict[str, Any], dates_to_check: List[str]) -> Dict[str, Any]:

@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Dict, Any
-import pytz
+import pytz, logging
 
 router = APIRouter()
 
@@ -35,7 +35,8 @@ async def get_current() -> CurrentDateTimeResponse:
         current_datetime = now.strftime("%Y-%m-%d %H:%M:%S")  # Full datetime
         timezone = str(now.tzinfo)
         
-        print(f"🕐 Current datetime requested: {current_day}, {current_date} at {now.strftime('%H:%M:%S')} {timezone}")
+    
+    logging.info(f"🕐 Current datetime requested: {current_day}, {current_date} at {now.strftime('%H:%M:%S')} {timezone}")
         
         return CurrentDateTimeResponse(
             success=True,
@@ -46,7 +47,8 @@ async def get_current() -> CurrentDateTimeResponse:
         )
         
     except Exception as e:
-        print(f"❌ Error getting current datetime: {str(e)}")
+    
+    logging.error(f"❌ Error getting current datetime: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get current datetime: {str(e)}")
 
 # Alternative endpoint with different path structure if needed

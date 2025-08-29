@@ -8,7 +8,7 @@ import requests
 from datetime import datetime
 from typing import Dict, Optional, Any
 from fastapi import APIRouter, HTTPException
-
+import logging
 from api.models import SendNewPatientFormRequest
 
 router = APIRouter(prefix="/api", tags=["patient-forms"])
@@ -92,15 +92,15 @@ Please complete your new patient intake form before your appointment:
 If you have any questions, please call us at (555) 123-4567.
         """.strip()
         
-        # Simulate SMS sending (replace with actual SMS service)
-        print(f"SMS would be sent to {form_data['phone_number']}: {message}")
+        # Simulate SMS sending (replace with actual SMS service)    
+    logging.info(f"SMS would be sent to {form_data['phone_number']}: {message}")
         
         # For demo purposes, always return True
         # In production, this would return the actual SMS delivery status
         return True
         
-    except Exception as e:
-        print(f"Error sending SMS: {e}")
+    except Exception as e:    
+    logging.error(f"Error sending SMS: {e}")
         return False
 
 async def log_form_sent_event(form_data: Dict[str, Any]):

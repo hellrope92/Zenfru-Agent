@@ -2,6 +2,7 @@
 Debug and testing API endpoints
 Handles health checks, debug information, and testing utilities
 """
+import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
@@ -33,22 +34,26 @@ async def health_check(getkolla_service: GetKollaService, schedule: Dict, bookin
 
 async def test_getkolla_api(getkolla_service: GetKollaService):
     """Test GetKolla API connectivity and data fetch"""
-    print("🔧 TESTING_GETKOLLA_API:")
+    
+    logging.info("🔧 TESTING_GETKOLLA_API:")
     
     try:
         # Test API connectivity
         health_status = getkolla_service.health_check()
-        print(f"   Health Check: {'✅ Connected' if health_status else '❌ Failed'}")
+    
+    logging.info(f"   Health Check: {'✅ Connected' if health_status else '❌ Failed'}")
         
         # Test fetching appointments
         start_date = datetime.now()
         end_date = start_date + timedelta(days=7)
         appointments = getkolla_service.get_booked_appointments(start_date, end_date)
-        print(f"   Appointments Found: {len(appointments)}")
+    
+    logging.info(f"   Appointments Found: {len(appointments)}")
         
         # Test available slots calculation
         available_slots = getkolla_service.get_available_slots_next_7_days()
-        print(f"   Available Slots: {len(available_slots)} days with slots")
+    
+    logging.info(f"   Available Slots: {len(available_slots)} days with slots")
         
         return {
             "getkolla_api": {
@@ -62,7 +67,8 @@ async def test_getkolla_api(getkolla_service: GetKollaService):
         }
         
     except Exception as e:
-        print(f"   ❌ Error testing GetKolla API: {e}")
+    
+    logging.error(f"   ❌ Error testing GetKolla API: {e}")
         return {
             "getkolla_api": {
                 "error": str(e),

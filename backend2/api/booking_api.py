@@ -6,6 +6,7 @@ import json
 import uuid
 import requests
 import os
+import logging
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Any, Union
 from fastapi import APIRouter, HTTPException
@@ -79,7 +80,8 @@ def load_schedule():
         with open(schedule_file, 'r') as f:
             return json.load(f)
     except Exception as e:
-        print(f"❌ Error loading schedule.json: {e}")
+        
+        logging.error(f"❌ Error loading schedule.json: {e}")
         return {}
 
 def get_provider_for_appointment_date(appointment_date: str) -> Optional[str]:
@@ -96,20 +98,20 @@ def get_provider_for_appointment_date(appointment_date: str) -> Optional[str]:
         # Get doctor name from schedule
         doctor_name = day_schedule.get("doctor", "")
         if not doctor_name:
-            print(f"⚠️ No doctor scheduled for {day_name}")
-            return None
             
+            logging.warning(f"⚠️ No doctor scheduled for {day_name}")
+            return None
         # Map doctor name to provider ID
         provider_id = DOCTOR_PROVIDER_MAPPING.get(doctor_name, "")
-        if not provider_id:
-            print(f"⚠️ No provider mapping found for {doctor_name}")
+        if not provider_id:            
+            logging.warning(f"⚠️ No provider mapping found for {doctor_name}")
             return None
-            
-        print(f"📅 Auto-selected provider for {day_name} ({appointment_date}): {doctor_name} -> {provider_id}")
-        return provider_id
         
+        logging.info(f"📅 Auto-selected provider for {day_name} ({appointment_date}): {doctor_name} -> {provider_id}")
+        return provider_id
     except Exception as e:
-        print(f"❌ Error determining provider for date {appointment_date}: {e}")
+        
+        logging.error(f"❌ Error determining provider for date {appointment_date}: {e}")
         return None
 
 def get_hygienist_provider_for_appointment_date(appointment_date: str, hygienist_name: str = None) -> Optional[str]:
@@ -125,29 +127,28 @@ def get_hygienist_provider_for_appointment_date(appointment_date: str, hygienist
         
         # Get hygienists for this day
         hygienists = day_schedule.get("hygienists", [])
-        if not hygienists:
-            print(f"⚠️ No hygienists scheduled for {day_name}")
+        if not hygienists:          
+            logging.warning(f"⚠️ No hygienists scheduled for {day_name}")
             return None
-        
         # If specific hygienist requested, find them
         if hygienist_name:
             for hygienist in hygienists:
                 if hygienist.get("name", "").lower() == hygienist_name.lower():
-                    provider_id = hygienist.get("provider_id", "")
-                    print(f"🦷 Found specific hygienist for {day_name} ({appointment_date}): {hygienist_name} -> {provider_id}")
+                    provider_id = hygienist.get("provider_id", "")                    
+                    logging.info(f"🦷 Found specific hygienist for {day_name} ({appointment_date}): {hygienist_name} -> {provider_id}")
                     return provider_id
-            print(f"⚠️ Requested hygienist {hygienist_name} not found for {day_name}")
+            
+            logging.warning(f"⚠️ Requested hygienist {hygienist_name} not found for {day_name}")
             return None
         else:
             # Return first available hygienist
             first_hygienist = hygienists[0]
             provider_id = first_hygienist.get("provider_id", "")
-            hygienist_name = first_hygienist.get("name", "")
-            print(f"🦷 Auto-selected hygienist for {day_name} ({appointment_date}): {hygienist_name} -> {provider_id}")
+            hygienist_name = first_hygienist.get("name", "")            
+            logging.info(f"🦷 Auto-selected hygienist for {day_name} ({appointment_date}): {hygienist_name} -> {provider_id}")
             return provider_id
-            
-    except Exception as e:
-        print(f"❌ Error determining hygienist provider for date {appointment_date}: {e}")
+    except Exception as e:        
+        logging.error(f"❌ Error determining hygienist provider for date {appointment_date}: {e}")
         return None
 
 # Load configuration from environment variables
@@ -187,33 +188,29 @@ def find_existing_contact_by_id(contact_id: str) -> Optional[str]:
     try:
         # Use Kolla filter API like in get_contact_api.py
         contacts_url = f"{KOLLA_BASE_URL}/{contact_id}"
-        
-        print(f"🔍 Searching for existing contact with ID: {contact_id}")
-        print(f"📞 Calling Kolla API: {contacts_url}")
-        
+              
+        logging.info(f"🔍 Searching for existing contact with ID: {contact_id}")
+        logging.info(f"📞 Calling Kolla API: {contacts_url}")
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=30)
-        print(f"   Response Status: {response.status_code}")
-        
+        logging.info(f"   Response Status: {response.status_code}")
         if response.status_code == 200:
             contact = response.json()
-            
             if contact:
                 contact_id = contact.get('name')
                 contact_name = f"{contact.get('given_name', '')} {contact.get('family_name', '')}".strip()
-                print(f"   📋 Found existing contact: {contact_name} (ID: {contact_id})")
+                logging.info(f"   📋 Found existing contact: {contact_name} (ID: {contact_id})")
                 return contact_id
             else:
-                print(f"   ❌ No existing contact found with ID: {contact_id}")
+                logging.warning(f"   ❌ No existing contact found with ID: {contact_id}")
                 return None
         else:
-            print(f"   ❌ API Error: {response.status_code}, {response.text}")
+            logging.error(f"   ❌ API Error: {response.status_code}, {response.text}")
             return None
-            
-    except requests.exceptions.Timeout:
-        print("   ❌ Contact search timed out")
+    except requests.exceptions.Timeout:        
+        logging.error("   ❌ Contact search timed out")
         return None
-    except Exception as e:
-        print(f"   ❌ Error searching for existing contact: {e}")
+    except Exception as e:        
+        logging.error(f"   ❌ Error searching for existing contact: {e}")
         return None
 
 def convert_time_to_datetime(date_str: str, time_str: str) -> datetime:
@@ -237,17 +234,16 @@ def convert_time_to_datetime(date_str: str, time_str: str) -> datetime:
         )
         
         return combined_datetime
-    except Exception as e:
-        print(f"Error converting time: {e}")
+    except Exception as e:        
+        logging.error(f"Error converting time: {e}")
         # Return a default datetime if parsing fails
         return datetime.now()
 
 def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Optional[str]:
     """Create a new contact in Kolla, return contact_id if successful."""
     url = f"{KOLLA_BASE_URL}/contacts"
-    payload = contact_info.copy()
-    
-    print(f"📋 Input contact_info: {json.dumps(contact_info, indent=2)}")
+    payload = contact_info.copy()    
+    logging.info(f"📋 Input contact_info: {json.dumps(contact_info, indent=2)}")
     
     # Kolla expects 'name' to be a unique resource string, so omit it on create
     payload.pop('name', None)
@@ -262,26 +258,26 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
     payload['type'] = 'PATIENT'  # Contact type (always PATIENT)
     
     # Set gender - handle various input formats
-    print(f"👤 Processing gender: '{payload.get('gender', 'NOT_FOUND')}'")
+    logging.info(f"👤 Processing gender: '{payload.get('gender', 'NOT_FOUND')}'")
     if 'gender' not in payload or not payload['gender']:
-        payload['gender'] = 'GENDER_UNSPECIFIED'
-        print(f"   ➜ Set to default: GENDER_UNSPECIFIED")
+    payload['gender'] = 'GENDER_UNSPECIFIED'
+    logging.info(f"   ➜ Set to default: GENDER_UNSPECIFIED")
     else:
         # Normalize gender values to match Kolla's expected format
         gender_value = str(payload['gender']).upper()
-        print(f"   ➜ Normalized to: {gender_value}")
+        logging.info(f"   ➜ Normalized to: {gender_value}")
         valid_genders = ['MALE', 'FEMALE', 'OTHER', 'GENDER_UNSPECIFIED']
         if gender_value in ['M', 'MALE']:
             payload['gender'] = 'MALE'
-            print(f"   ➜ Final: MALE")
+            logging.info(f"   ➜ Final: MALE")
         elif gender_value in ['F', 'FEMALE']:
             payload['gender'] = 'FEMALE'
-            print(f"   ➜ Final: FEMALE")
+            logging.info(f"   ➜ Final: FEMALE")
         elif gender_value not in valid_genders:
             payload['gender'] = 'GENDER_UNSPECIFIED'
-            print(f"   ➜ Invalid, set to: GENDER_UNSPECIFIED")
+            logging.info(f"   ➜ Invalid, set to: GENDER_UNSPECIFIED")
         else:
-            print(f"   ➜ Final: {payload['gender']}")
+            logging.info(f"   ➜ Final: {payload['gender']}")
     
     # Ensure phone_numbers is properly formatted
     if 'phone_numbers' not in payload and payload.get('number'):
@@ -332,7 +328,7 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
         }
         
         if has_address_fields:
-            print(f"   📋 Final address object: {address}")
+            logging.info(f"   📋 Final address object: {address}")
         
         payload['addresses'] = [address]
     else:
@@ -396,11 +392,11 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
     for field in fields_to_clean:
         payload.pop(field, None)
     
-    print(f"Creating contact with payload: {json.dumps(payload, indent=2)}")
+    logging.info(f"Creating contact with payload: {json.dumps(payload, indent=2)}")
     
     try:
         response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(payload), timeout=30)
-        print(f"Contact creation response: {response.status_code}, {response.text}")
+    logging.info(f"Contact creation response: {response.status_code}, {response.text}")
         
         if response.status_code in (200, 201):
             contact_id = response.json().get('name')
@@ -411,14 +407,14 @@ def create_kolla_contact(contact_info: dict, appointment_date: str = None) -> Op
             
             return contact_id
         else:
-            print(f"Contact creation failed with status {response.status_code}")
+            logging.error(f"Contact creation failed with status {response.status_code}")
             return None
             
     except requests.exceptions.Timeout:
-        print("Contact creation timed out")
+        logging.error("Contact creation timed out")
         return None
     except Exception as e:
-        print(f"Error creating contact: {e}")
+        logging.error(f"Error creating contact: {e}")
         return None
 
 def update_contact_preferred_provider(contact_id: str, preferred_provider: dict):
@@ -430,12 +426,14 @@ def update_contact_preferred_provider(contact_id: str, preferred_provider: dict)
         }
         
         response = requests.patch(url, headers=KOLLA_HEADERS, data=json.dumps(payload), timeout=10)
+        
         if response.status_code in (200, 201):
-            print(f"✅ Updated preferred provider for contact {contact_id}")
+            logging.info(f"✅ Updated preferred provider for contact {contact_id}")
         else:
-            print(f"⚠️ Failed to update preferred provider: {response.status_code}, {response.text}")
+            logging.warning(f"⚠️ Failed to update preferred provider: {response.status_code}, {response.text}")
     except Exception as e:
-        print(f"⚠️ Error updating preferred provider: {e}")
+        
+        logging.warning(f"⚠️ Error updating preferred provider: {e}")
 
 def get_kolla_resources():
     """Fetch all resources from Kolla and return as a list."""
@@ -474,7 +472,8 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
         response = requests.get(url, headers=KOLLA_HEADERS, timeout=10)
         
         if response.status_code != 200:
-            print(f"Error fetching appointments for availability check: {response.status_code}")
+            
+            logging.error(f"Error fetching appointments for availability check: {response.status_code}")
             # If we can't check, allow the booking (fail open)
             return {"available": True, "adjusted_end_time": None, "conflict_details": None}
             
@@ -485,9 +484,10 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
         requested_start = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
         requested_end = end_datetime.strftime("%Y-%m-%d %H:%M:%S")
         
-        print(f"   Checking availability for: {requested_start} - {requested_end}")
+        
+        logging.info(f"   Checking availability for: {requested_start} - {requested_end}")
         if operatory_name:
-            print(f"   In operatory: {operatory_name}")
+            logging.info(f"   In operatory: {operatory_name}")
         
         # Check each existing appointment for conflicts
         for appointment in existing_appointments:
@@ -539,10 +539,10 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
                                 # Ensure minimum 30-minute appointment duration
                                 min_duration_minutes = 30
                                 if (adjusted_end - start_datetime).total_seconds() / 60 >= min_duration_minutes:
-                                    print(f"   🔧 Minor conflict detected ({overlap_minutes:.0f} min overlap)")
-                                    print(f"   Existing: {appt_wall_start} - {appt_wall_end}")
-                                    print(f"   Requested: {requested_start} - {requested_end}")
-                                    print(f"   ✅ Auto-adjusting end time to: {adjusted_end.strftime('%Y-%m-%d %H:%M:%S')}")
+                                    logging.info(f"   🔧 Minor conflict detected ({overlap_minutes:.0f} min overlap)")
+                                    logging.info(f"   Existing: {appt_wall_start} - {appt_wall_end}")
+                                    logging.info(f"   Requested: {requested_start} - {requested_end}")
+                                    logging.info(f"   ✅ Auto-adjusting end time to: {adjusted_end.strftime('%Y-%m-%d %H:%M:%S')}")
                                     
                                     return {
                                         "available": True,
@@ -555,9 +555,9 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
                                     }
                         
                         # If we can't adjust, it's a real conflict
-                        print(f"   ❌ Time conflict found with appointment {appt_id}")
-                        print(f"   Existing: {appt_wall_start} - {appt_wall_end}")
-                        print(f"   Requested: {requested_start} - {requested_end}")
+                        logging.warning(f"   ❌ Time conflict found with appointment {appt_id}")
+                        logging.warning(f"   Existing: {appt_wall_start} - {appt_wall_end}")
+                        logging.warning(f"   Requested: {requested_start} - {requested_end}")
                         
                         return {
                             "available": False,
@@ -570,14 +570,15 @@ async def check_time_slot_availability(start_datetime: datetime, end_datetime: d
                         }
                         
                 except ValueError as e:
-                    print(f"   Warning: Could not parse appointment time format: {e}")
+                    
+                    logging.warning(f"   Warning: Could not parse appointment time format: {e}")
                     continue
         
-        print(f"   ✅ Time slot is available")
+        logging.info(f"   ✅ Time slot is available")
         return {"available": True, "adjusted_end_time": None, "conflict_details": None}
-        
     except Exception as e:
-        print(f"   Error checking time slot availability: {e}")
+        
+        logging.error(f"   Error checking time slot availability: {e}")
         # If there's an error checking, allow the booking (fail open)
         return {"available": True, "adjusted_end_time": None, "conflict_details": None}
     
@@ -591,7 +592,8 @@ def send_booking_confirmation_email(booking_details: dict):
         sender_name = "Zenfru AI Assistant"
         recipients = [r.strip() for r in os.getenv("BOOKING_EMAIL_RECIPIENTS", "").split(",") if r.strip()]
         if not recipients or not smtp_user or not smtp_pass:
-            print("[Booking Email] Missing recipients or SMTP credentials, not sending email.")
+            
+            logging.warning("[Booking Email] Missing recipients or SMTP credentials, not sending email.")
             return
 
         def safe(val):
@@ -716,26 +718,29 @@ def send_booking_confirmation_email(booking_details: dict):
                         server.starttls()
                         server.login(smtp_user, smtp_pass)
                         server.send_message(msg)
-                print(f"[Booking Email] Sent booking confirmation to: {recipients}")
+                
+                logging.info(f"[Booking Email] Sent booking confirmation to: {recipients}")
         except Exception as e:
-                print(f"[Booking Email] Failed to send: {e}")
+                
+                logging.error(f"[Booking Email] Failed to send: {e}")
 
 async def book_patient_appointment(request: BookAppointmentRequest, getkolla_service: GetKollaService):
     """Book a new patient appointment using Kolla API, always creating a new contact."""
-    print(f"\U0001F4C5 BOOK_PATIENT_APPOINTMENT:")
-    print(f"   Name: {request.name}")
-    print(f"   ID: {request.contact_id}")
-    print(f"   Contact: {request.contact}")
-    print(f"   Requested date: {request.date}")
-    print(f"   Day: {request.day}")
-    print(f"   DOB: {request.dob}")
-    print(f"   Time: {request.time}")
-    print(f"   Service: {request.service_booked}")
-    print(f"   Doctor: {request.doctor_for_appointment}")
-    print(f"   New Patient: {request.is_new_patient}")
-    print(f"   Slots Needed: {getattr(request, 'slots_needed', 1)}")
-    print(f"   Is Cleaning: {getattr(request, 'iscleaning', False)}")
-    print(f"   Patient Details: {request.patient_details}")
+    
+    logging.info(f"\U0001F4C5 BOOK_PATIENT_APPOINTMENT:")
+    logging.info(f"   Name: {request.name}")
+    logging.info(f"   ID: {request.contact_id}")
+    logging.info(f"   Contact: {request.contact}")
+    logging.info(f"   Requested date: {request.date}")
+    logging.info(f"   Day: {request.day}")
+    logging.info(f"   DOB: {request.dob}")
+    logging.info(f"   Time: {request.time}")
+    logging.info(f"   Service: {request.service_booked}")
+    logging.info(f"   Doctor: {request.doctor_for_appointment}")
+    logging.info(f"   New Patient: {request.is_new_patient}")
+    logging.info(f"   Slots Needed: {getattr(request, 'slots_needed', 1)}")
+    logging.info(f"   Is Cleaning: {getattr(request, 'iscleaning', False)}")
+    logging.info(f"   Patient Details: {request.patient_details}")
     
     # Extract contact number for logging
     contact_number = None
@@ -777,24 +782,24 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
 
         # Extract address fields from request if provided, and they are not already in contact_info
         address_fields = ['street_address', 'city', 'postal_code', 'country_code']
-        print(f"🏠 Extracting address fields from request...")
+    logging.info(f"🏠 Extracting address fields from request...")
         for field in address_fields:
             if hasattr(request, field) and getattr(request, field) is not None and field not in contact_info:
                 contact_info[field] = getattr(request, field)
-                print(f"   ✅ Added {field} = '{getattr(request, field)}' from request root")
+                logging.info(f"   ✅ Added {field} = '{getattr(request, field)}' from request root")
         
         # Handle address state field separately to avoid conflict with contact state
         if hasattr(request, 'state') and request.state is not None and 'state_address' not in contact_info:
             contact_info['state_address'] = request.state  # Address state (e.g., "NJ")
-            print(f"   ✅ Added state_address = '{request.state}' from request root")
+            logging.info(f"   ✅ Added state_address = '{request.state}' from request root")
         elif hasattr(request, 'state_address') and request.state_address is not None and 'state_address' not in contact_info:
              contact_info['state_address'] = request.state_address
-             print(f"   ✅ Added state_address = '{request.state_address}' from request root")
+             logging.info(f"   ✅ Added state_address = '{request.state_address}' from request root")
         
         # Extract gender from request if provided and not in contact_info
         if hasattr(request, 'gender') and request.gender is not None and 'gender' not in contact_info:
             contact_info['gender'] = request.gender
-            print(f"   ✅ Added gender = '{request.gender}' from request root")
+            logging.info(f"   ✅ Added gender = '{request.gender}' from request root")
 
         # Set required Kolla contact fields (these are different from address fields)
         contact_info.setdefault('state', 'ACTIVE')  # Contact status
@@ -817,11 +822,11 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         contact_id = request.contact_id if request.contact_id else 'x'  # 'x' indicates new contact
 
         if contact_id not in ['x', 'X']:
-            print(f"🔍 Checking for existing contact with ID: {contact_id}")
+            logging.info(f"🔍 Checking for existing contact with ID: {contact_id}")
             contact_id = find_existing_contact_by_id(contact_id)
         
         else:
-            print(f"   Creating new patient contact in Kolla...")
+            logging.info(f"   Creating new patient contact in Kolla...")
             contact_id = create_kolla_contact(contact_info, request.date)
             is_new_contact = True
             if not contact_id or contact_id in ['x', 'X']:
@@ -832,7 +837,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     "error": "contact_creation_failed"
                 }
             else:
-                print(f"   Using existing contact: {contact_id}")
+                logging.info(f"   Using existing contact: {contact_id}")
                 is_new_contact = False
 
         # 2. Prepare appointment data for Kolla
@@ -846,14 +851,14 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             # Each slot is typically 30 minutes, so multiply base duration by slots_needed
             if slots_needed > 1:
                 service_duration = base_service_duration * slots_needed
-                print(f"📅 Adjusted duration for {slots_needed} slots: {base_service_duration} min → {service_duration} min")
+                logging.info(f"📅 Adjusted duration for {slots_needed} slots: {base_service_duration} min → {service_duration} min")
             else:
                 service_duration = base_service_duration
-                print(f"📅 Using base duration: {service_duration} min")
+                logging.info(f"📅 Using base duration: {service_duration} min")
                 
             end_datetime = start_datetime + timedelta(minutes=service_duration)
         except Exception as e:
-            print(f"Error preparing appointment data: {e}")
+            logging.error(f"Error preparing appointment data: {e}")
             return {
                 "success": False,
                 "message": "Invalid date or time format provided.",
@@ -869,7 +874,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             # # Debug: log provider-operatory mappings
             # debug_provider_operatory_mappings()
         except Exception as e:
-            print(f"Error fetching resources: {e}")
+            logging.error(f"Error fetching resources: {e}")
             return {
                 "success": False,
                 "message": "Failed to fetch clinic resources.",
@@ -885,11 +890,11 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             # For hygienist appointments, get hygienist provider ID
             hygienist_name = getattr(request, 'doctor_for_appointment', None)  # doctor_for_appointment might contain hygienist name
             auto_provider_id = get_hygienist_provider_for_appointment_date(request.date, hygienist_name)
-            print(f"🦷 Cleaning appointment - Auto-selected hygienist provider: {auto_provider_id}")
+            logging.info(f"🦷 Cleaning appointment - Auto-selected hygienist provider: {auto_provider_id}")
         else:
             # For doctor appointments, get doctor provider ID
             auto_provider_id = get_provider_for_appointment_date(request.date)
-            print(f"👨‍⚕️ Doctor appointment - Auto-selected doctor provider: {auto_provider_id}")
+            logging.info(f"👨‍⚕️ Doctor appointment - Auto-selected doctor provider: {auto_provider_id}")
         
         provider_resource = None
         
@@ -899,23 +904,23 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 if r.get('type') == 'PROVIDER' and r.get('remote_id') == auto_provider_id:
                     provider_resource = r
                     appointment_type = "hygienist" if is_cleaning_appointment else "doctor"
-                    print(f"✅ Auto-selected {appointment_type} provider: {r.get('display_name', 'N/A')} ({auto_provider_id})")
+                    logging.info(f"✅ Auto-selected {appointment_type} provider: {r.get('display_name', 'N/A')} ({auto_provider_id})")
                     break
             
             if not provider_resource:
                 appointment_type = "hygienist" if is_cleaning_appointment else "doctor"
-                print(f"⚠️ Auto-selected {appointment_type} provider {auto_provider_id} not found in resources, falling back to request provider")
+                logging.warning(f"⚠️ Auto-selected {appointment_type} provider {auto_provider_id} not found in resources, falling back to request provider")
         
         # Fallback: Find provider resource by display name if provided and auto-selection failed
         if not provider_resource:
             provider_display_name = getattr(request, 'doctor_for_appointment', None)
             if provider_display_name:
-                print(f"📋 Attempting to find provider for: {provider_display_name}")
+                logging.info(f"📋 Attempting to find provider for: {provider_display_name}")
                 
                 # Method 1: Try exact display name match
                 provider_resource = find_resource(resources, "PROVIDER", display_name=provider_display_name)
                 if provider_resource:
-                    print(f"✅ Found provider by exact display name: {provider_resource.get('display_name')} ({provider_resource.get('remote_id')})")
+                    logging.info(f"✅ Found provider by exact display name: {provider_resource.get('display_name')} ({provider_resource.get('remote_id')})")
                 
                 # Method 2: Try using DOCTOR_PROVIDER_MAPPING
                 if not provider_resource and provider_display_name in DOCTOR_PROVIDER_MAPPING:
@@ -923,7 +928,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     for r in resources:
                         if r.get('type') == 'PROVIDER' and r.get('remote_id') == mapped_provider_id:
                             provider_resource = r
-                            print(f"✅ Found provider by mapping: {provider_display_name} -> {mapped_provider_id} -> {r.get('display_name')}")
+                            logging.info(f"✅ Found provider by mapping: {provider_display_name} -> {mapped_provider_id} -> {r.get('display_name')}")
                             break
                 
                 # Method 3: Try using KOLLA_DISPLAY_NAME_MAPPING  
@@ -933,7 +938,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                             for r in resources:
                                 if r.get('type') == 'PROVIDER' and r.get('remote_id') == remote_id:
                                     provider_resource = r
-                                    print(f"✅ Found provider by Kolla name match: {provider_display_name} -> {kolla_name} -> {remote_id}")
+                                    logging.info(f"✅ Found provider by Kolla name match: {provider_display_name} -> {kolla_name} -> {remote_id}")
                                     break
                             if provider_resource:
                                 break
@@ -950,16 +955,16 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                                ('yuzvyak' in request_name and 'yuzvyak' in display_name) or \
                                ('lee' in request_name and 'lee' in display_name):
                                 provider_resource = r
-                                print(f"✅ Found provider by partial name match: {provider_display_name} -> {r.get('display_name')} ({r.get('remote_id')})")
+                                logging.info(f"✅ Found provider by partial name match: {provider_display_name} -> {r.get('display_name')} ({r.get('remote_id')})")
                                 break
                 
                 if not provider_resource:
-                    print(f"⚠️ Could not find provider for: {provider_display_name}")
+                    logging.warning(f"⚠️ Could not find provider for: {provider_display_name}")
         
         # Final fallback: Use any available provider
         if not provider_resource:
             provider_resource = find_resource(resources, "PROVIDER")
-            print(f"⚠️ Using fallback provider: {provider_resource.get('display_name', 'N/A') if provider_resource else 'None'}")
+            logging.warning(f"⚠️ Using fallback provider: {provider_resource.get('display_name', 'N/A') if provider_resource else 'None'}")
         
         # Find operatory resource - assign based on provider
         operatory_resource = None
@@ -975,7 +980,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 for r in resources:
                     if r.get('type') == 'OPERATORY' and r.get('name') == operatory_name:
                         operatory_resource = r
-                        print(f"✅ Using provider-specific operatory: {r.get('display_name', operatory_name)} for {provider_resource.get('display_name', 'N/A')}")
+                        logging.info(f"✅ Using provider-specific operatory: {r.get('display_name', operatory_name)} for {provider_resource.get('display_name', 'N/A')}")
                         break
         
         # Fallback to request operatory if provider-specific operatory not found
@@ -989,7 +994,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     for r in resources:
                         if r.get('type') == 'OPERATORY' and (r.get('name') == operatory_val or r.get('remote_id') == operatory_val):
                             operatory_resource = r
-                            print(f"✅ Using requested operatory: {r.get('display_name', operatory_val)}")
+                            logging.info(f"✅ Using requested operatory: {r.get('display_name', operatory_val)}")
                             break
         
         # Final fallback: Use operatory_1 as default
@@ -997,14 +1002,14 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             for r in resources:
                 if r.get('type') == 'OPERATORY' and r.get('name') == 'resources/operatory_1':
                     operatory_resource = r
-                    print(f"⚠️ Using fallback operatory: {r.get('display_name', 'operatory_1')}")
+                    logging.warning(f"⚠️ Using fallback operatory: {r.get('display_name', 'operatory_1')}")
                     break
         
         # Last resort: Use any operatory
         if not operatory_resource:
             operatory_resource = find_resource(resources, "OPERATORY")
             if operatory_resource:
-                print(f"⚠️ Using any available operatory: {operatory_resource.get('display_name', 'N/A')}")
+                logging.warning(f"⚠️ Using any available operatory: {operatory_resource.get('display_name', 'N/A')}")
         
         if not operatory_resource:
             return {
@@ -1088,21 +1093,21 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         # If no given/family name, keep contact_id as name
         
         # Log booking details before API call
-        print(f"📋 Final booking details:")
-        print(f"   Provider: {provider_resource.get('display_name', 'N/A')} ({provider_resource.get('remote_id', 'N/A')})")
-        print(f"   Operatory: {operatory_resource.get('display_name', 'N/A')} ({operatory_resource.get('name', 'N/A')})")
-        print(f"   Scheduler: HO7 (default)")
-        print(f"   Date/Time: {appointment_data['wall_start_time']} - {appointment_data['wall_end_time']}")
-        print(f"   Duration: {service_duration} minutes ({slots_needed} slots)")
+    logging.info(f"📋 Final booking details:")
+    logging.info(f"   Provider: {provider_resource.get('display_name', 'N/A')} ({provider_resource.get('remote_id', 'N/A')})")
+    logging.info(f"   Operatory: {operatory_resource.get('display_name', 'N/A')} ({operatory_resource.get('name', 'N/A')})")
+    logging.info(f"   Scheduler: HO7 (default)")
+    logging.info(f"   Date/Time: {appointment_data['wall_start_time']} - {appointment_data['wall_end_time']}")
+    logging.info(f"   Duration: {service_duration} minutes ({slots_needed} slots)")
         
         # 4. Book appointment in Kolla
         url = f"{KOLLA_BASE_URL}/appointments"
         response = requests.post(url, headers=KOLLA_HEADERS, data=json.dumps(appointment_data))
         if response.status_code in (200, 201):
             appointment_id = response.json().get('name', f"APT-{uuid.uuid4().hex[:8].upper()}")
-            print(f"   ✅ New patient appointment successfully booked through Kolla API!")
-            print(f"   📋 Appointment ID: {appointment_id}")
-            print(f"   👤 Contact ID: {contact_id}")
+            logging.info(f"   ✅ New patient appointment successfully booked through Kolla API!")
+            logging.info(f"   📋 Appointment ID: {appointment_id}")
+            logging.info(f"   👤 Contact ID: {contact_id}")
             
             # Log successful booking interaction
             patient_logger.log_interaction(
@@ -1176,7 +1181,8 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 }
             }
         else:
-            print(f"   ❌ Failed to book appointment through Kolla API")
+            
+            logging.error(f"   ❌ Failed to book appointment through Kolla API")
             
             # Log failed booking interaction
             patient_logger.log_interaction(
@@ -1208,7 +1214,8 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                 "error": response.text
             }
     except Exception as e:
-        print(f"   ❌ Error booking appointment: {e}")
+        
+        logging.error(f"   ❌ Error booking appointment: {e}")
         
         # Determine if is_new_contact variable exists in scope for error logging
         try:
@@ -1245,14 +1252,14 @@ def get_operatory_for_provider(provider_remote_id: str) -> Optional[Dict[str, st
     """Get the operatory resource information for a specific provider"""
     operatory_name = PROVIDER_OPERATORY_MAPPING.get(provider_remote_id)
     if not operatory_name:
-        print(f"⚠️ No operatory mapping found for provider {provider_remote_id}")
+        
+        logging.warning(f"⚠️ No operatory mapping found for provider {provider_remote_id}")
         return None
-    
     operatory_remote_id = OPERATORY_REMOTE_ID_MAPPING.get(operatory_name)
     if not operatory_remote_id:
-        print(f"⚠️ No remote_id mapping found for operatory {operatory_name}")
+        
+        logging.warning(f"⚠️ No remote_id mapping found for operatory {operatory_name}")
         return None
-    
     return {
         "name": operatory_name,
         "remote_id": operatory_remote_id,

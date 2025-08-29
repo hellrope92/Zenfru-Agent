@@ -89,30 +89,36 @@ async def fetch_appointments_by_phone_filter(patient_phone: str) -> List[Dict[st
         contact_info = await get_contact_by_phone_filter(patient_phone)
         
         if not contact_info:
-            print(f"⚠️ No contact found for phone: {patient_phone}")
+            
+            logging.warning(f"⚠️ No contact found for phone: {patient_phone}")
             return []
         
         # Step 2: Get contact_id for appointments filter
         contact_id = contact_info.get("name")  # This is usually like "contacts/123"
         
         if not contact_id:
-            print(f"⚠️ No contact ID found for phone: {patient_phone}")
+            
+            logging.warning(f"⚠️ No contact ID found for phone: {patient_phone}")
             return []
         
-        print(f"📋 Found contact: {contact_info.get('given_name', '')} {contact_info.get('family_name', '')} ({contact_id})")
+    
+    logging.info(f"📋 Found contact: {contact_info.get('given_name', '')} {contact_info.get('family_name', '')} ({contact_id})")
         
         # Step 3: Get appointments for this contact using appointments filter
         appointments = await get_appointments_by_contact_filter(contact_id)
         
         if appointments:
-            print(f"✅ Found {len(appointments)} appointments for patient")
+            
+            logging.info(f"✅ Found {len(appointments)} appointments for patient")
             return appointments
         else:
-            print(f"⚠️ No appointments found for contact: {contact_id}")
+            
+            logging.warning(f"⚠️ No appointments found for contact: {contact_id}")
             return []
         
     except Exception as e:
-        print(f"❌ Error fetching appointments by phone filter: {e}")
+    
+    logging.error(f"❌ Error fetching appointments by phone filter: {e}")
         return []
 
 async def get_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, Any]]:
@@ -125,15 +131,20 @@ async def get_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, 
         filter_query = f"type='PATIENT' AND state='ACTIVE' AND phone='{patient_phone}'"
         params = {"filter": filter_query}
         
-        print(f"📞 Calling Kolla Contacts API: {contacts_url}")
-        print(f"   Filter: {filter_query}")
-        print(f"   Normalized phone: {patient_phone}")
+    
+    logging.info(f"📞 Calling Kolla Contacts API: {contacts_url}")
+    
+    logging.info(f"   Filter: {filter_query}")
+    
+    logging.info(f"   Normalized phone: {patient_phone}")
         
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, params=params, timeout=10)
-        print(f"   Response Status: {response.status_code}")
+    
+    logging.info(f"   Response Status: {response.status_code}")
         
         if response.status_code != 200:
-            print(f"   ❌ API Error: {response.text}")
+            
+            logging.error(f"   ❌ API Error: {response.text}")
             return None
             
         contacts_data = response.json()
@@ -142,13 +153,15 @@ async def get_contact_by_phone_filter(patient_phone: str) -> Optional[Dict[str, 
         if contacts:
             # Return the first matching contact
             contact = contacts[0]
-            print(f"   ✅ Found contact: {contact.get('given_name', '')} {contact.get('family_name', '')}")
+            
+            logging.info(f"   ✅ Found contact: {contact.get('given_name', '')} {contact.get('family_name', '')}")
             return contact
         
         return None
         
     except Exception as e:
-        print(f"   ❌ Error getting contact by phone filter: {e}")
+    
+    logging.error(f"   ❌ Error getting contact by phone filter: {e}")
         return None
 
 async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, Any]]:
@@ -164,20 +177,25 @@ async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, 
         filter_query = f"contact_id='{contact_id}' AND start_time > '{past_date}' AND start_time < '{future_date}'"
         params = {"filter": filter_query}
         
-        print(f"📞 Calling Kolla Appointments API: {appointments_url}")
-        print(f"   Filter: {filter_query}")
+    
+    logging.info(f"📞 Calling Kolla Appointments API: {appointments_url}")
+    
+    logging.info(f"   Filter: {filter_query}")
         
         response = requests.get(appointments_url, headers=KOLLA_HEADERS, params=params, timeout=10)
-        print(f"   Response Status: {response.status_code}")
+    
+    logging.info(f"   Response Status: {response.status_code}")
         
         if response.status_code != 200:
-            print(f"   ❌ API Error: {response.text}")
+            
+            logging.error(f"   ❌ API Error: {response.text}")
             return []
             
         appointments_data = response.json()
         appointments = appointments_data.get("appointments", [])
         
-        print(f"   ✅ Retrieved {len(appointments)} appointments")
+    
+    logging.info(f"   ✅ Retrieved {len(appointments)} appointments")
 
         # Sort appointments by wall_start_time to get the latest ones first
         appointments.sort(key=lambda x: x.get("wall_start_time", ""), reverse=True)
@@ -206,7 +224,8 @@ async def get_appointments_by_contact_filter(contact_id: str) -> List[Dict[str, 
         return enriched_appointments
         
     except Exception as e:
-        print(f"   ❌ Error getting appointments by contact filter: {e}")
+    
+    logging.error(f"   ❌ Error getting appointments by contact filter: {e}")
         return []
 
 def calculate_duration(start_time: str, end_time: str) -> Optional[int]:
@@ -319,23 +338,29 @@ async def get_appointments_by_date_range(start_date: str, end_date: str) -> List
         
         params = {"filter": filter_query}
         
-        print(f"📞 Calling Kolla Appointments API: {appointments_url}")
-        print(f"   Filter: {filter_query}")
+    
+    logging.info(f"📞 Calling Kolla Appointments API: {appointments_url}")
+    
+    logging.info(f"   Filter: {filter_query}")
         
         response = requests.get(appointments_url, headers=KOLLA_HEADERS, params=params, timeout=10)
-        print(f"   Response Status: {response.status_code}")
+    
+    logging.info(f"   Response Status: {response.status_code}")
         
         if response.status_code != 200:
-            print(f"   ❌ API Error: {response.text}")
+            
+            logging.error(f"   ❌ API Error: {response.text}")
             return []
             
         appointments_data = response.json()
         appointments = appointments_data.get("appointments", [])
         
-        print(f"   ✅ Retrieved {len(appointments)} appointments for date range")
+    
+    logging.info(f"   ✅ Retrieved {len(appointments)} appointments for date range")
         
         return appointments
         
     except Exception as e:
-        print(f"   ❌ Error getting appointments by date range: {e}")
+    
+    logging.error(f"   ❌ Error getting appointments by date range: {e}")
         return []
