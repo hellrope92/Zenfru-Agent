@@ -1082,12 +1082,12 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
         # If no given/family name, keep contact_id as name
         
         # Log booking details before API call
-    logging.info(f"📋 Final booking details:")
-    logging.info(f"   Provider: {provider_resource.get('display_name', 'N/A')} ({provider_resource.get('remote_id', 'N/A')})")
-    logging.info(f"   Operatory: {operatory_resource.get('display_name', 'N/A')} ({operatory_resource.get('name', 'N/A')})")
-    logging.info(f"   Scheduler: HO7 (default)")
-    logging.info(f"   Date/Time: {appointment_data['wall_start_time']} - {appointment_data['wall_end_time']}")
-    logging.info(f"   Duration: {service_duration} minutes ({slots_needed} slots)")
+        logging.info(f"📋 Final booking details:")
+        logging.info(f"   Provider: {provider_resource.get('display_name', 'N/A')} ({provider_resource.get('remote_id', 'N/A')})")
+        logging.info(f"   Operatory: {operatory_resource.get('display_name', 'N/A')} ({operatory_resource.get('name', 'N/A')})")
+        logging.info(f"   Scheduler: HO7 (default)")
+        logging.info(f"   Date/Time: {appointment_data['wall_start_time']} - {appointment_data['wall_end_time']}")
+        logging.info(f"   Duration: {service_duration} minutes ({slots_needed} slots)")
         
         # 4. Book appointment in Kolla
         url = f"{KOLLA_BASE_URL}/appointments"
