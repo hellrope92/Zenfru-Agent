@@ -70,8 +70,7 @@ async def fetch_contacts_by_phone_filter(patient_phone: str) -> Optional[list]:
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=10)
     
         logging.info(f"   Response Status: {response.status_code}")
-        if response.status_code != 200:
-            
+        if response.status_code != 200:            
             logging.error(f"   ❌ API Error: {response.text}")
             return None
         contacts_data = response.json()
@@ -83,8 +82,7 @@ async def fetch_contacts_by_phone_filter(patient_phone: str) -> Optional[list]:
     
         logging.warning(f"   ⚠️ No contact found for phone: {patient_phone}")
         return None
-    except Exception as e:
-    
+    except Exception as e:    
         logging.error(f"   ❌ Error fetching contact by phone filter: {e}")
         return None
 
@@ -187,32 +185,27 @@ async def fetch_contact_by_name_filter(patient_name: str) -> Optional[List[Dict[
         params = {"filter": filter_query}
         
     
-        logging.info(f"📞 Calling Kolla API: {contacts_url}")
-    
+        logging.info(f"📞 Calling Kolla API: {contacts_url}")    
         logging.info(f"   Filter: {filter_query}")
         
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, params=params, timeout=10)
     
         logging.info(f"   Response Status: {response.status_code}")
         
-        if response.status_code != 200:
-            
+        if response.status_code != 200:            
             logging.error(f"   ❌ API Error: {response.text}")
             return None
             
         contacts_data = response.json()
-        contacts = contacts_data.get("contacts", [])
-        
-    
+        contacts = contacts_data.get("contacts", [])            
         logging.info(f"   ✅ Found {len(contacts)} contacts matching name filter")
         
         if contacts:
             return contacts
         
-    
         logging.warning(f"   ⚠️ No contact found for name: {patient_name}")
         return None
         
     except Exception as e:    
-    logging.error(f"   ❌ Error fetching contact by name filter: {e}")
+        logging.error(f"   ❌ Error fetching contact by name filter: {e}")
         return None
