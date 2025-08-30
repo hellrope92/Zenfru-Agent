@@ -39,7 +39,8 @@ from api import (
     confirm_api,
     get_current,
     reporting_api,
-    save_transcripts_api
+    save_transcripts_api,
+    transcript_summary_api
 )
 
 
@@ -266,6 +267,7 @@ app.include_router(confirm_api.router)
 app.include_router(get_current.router, prefix="/api", tags=["datetime"])
 app.include_router(reporting_api.router)
 app.include_router(save_transcripts_api.router)
+app.include_router(transcript_summary_api.router)
 # ========== MAIN ==========
 
 if __name__ == "__main__":    
