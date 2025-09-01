@@ -51,10 +51,10 @@ async def get_transcript(request: Request):
     except json.JSONDecodeError:
         return {"error": "Invalid JSON"}
 
-    # Save raw payload to Mongo in EST
-    now_est = datetime.now(ZoneInfo("America/New_York"))
+    # Save raw payload to Mongo in UTC
+    now_utc = datetime.now(ZoneInfo("UTC"))
     db.raw_webhooks.insert_one({
-        "received_at_est": now_est,
+        "received_at_utc": now_utc,
         "payload": data
     })
 
@@ -69,6 +69,6 @@ def get_latest_transcript():
         return {"error": "No transcripts found"}
 
     return {
-        "received_at_est": latest_doc["received_at_est"],
+        "received_at_utc": latest_doc["received_at_utc"],
         "payload": latest_doc["payload"]
     }

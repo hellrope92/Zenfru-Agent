@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from pymongo import MongoClient
 from fastapi import APIRouter
 from zoneinfo import ZoneInfo
+from datetime import timezone
 from openai import OpenAI
 
 # env + db setup
@@ -18,15 +19,14 @@ gpt_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 @router.get("/transcripts/last_24h")
 async def get_cleaned_transcripts_last_24h():
     """
-    Fetch transcripts from the last 24 hours (EST), 
-    clean them, and return relevant fields.
+    Fetch transcripts from the last 24 hours (UTC), 
+    clean them, and return relevant fields (i.e., name, phone number, time in EST, conversation).
     """
-    est = ZoneInfo("America/New_York")
-    now_est = datetime.now(est)
-    since_est = now_est - timedelta(hours=24)
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    since_utc = now_utc - timedelta(hours=24)
 
-    transcripts = db.transcripts.find({
-        "received_at_est": {"$gte": since_est.isoformat()}
+    transcripts = db.raw_webhooks.find({
+        "received_at_utc": {"$gte": since_utc, "$lte": now_utc}
     })
 
     cleaned = []
@@ -53,7 +53,14 @@ async def get_cleaned_transcripts_last_24h():
             .get("number", {})
             .get("value")
         )
-        est_time = t.get("received_at_est")
+        utc_time = t.get("received_at_utc")
+        # Convert UTC time to EST for output
+        if utc_time:
+            if utc_time.tzinfo is None:
+                utc_time = utc_time.replace(tzinfo=timezone.utc)
+            est_time = utc_time.astimezone(ZoneInfo("America/New_York"))
+        else:
+            est_time = None
 
         cleaned.append({
             "name": name,
@@ -61,6 +68,9 @@ async def get_cleaned_transcripts_last_24h():
             "est_time": est_time,
             "conversation": "\n".join(conversation)
         })
+
+    # Sort by est_time (oldest first)
+    cleaned.sort(key=lambda x: x["est_time"] if x["est_time"] is not None else datetime.max)
 
     return cleaned
 
