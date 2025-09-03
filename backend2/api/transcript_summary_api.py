@@ -1,10 +1,12 @@
-import os, json
+import os, json, logging, smtplib
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 from fastapi import APIRouter
 from zoneinfo import ZoneInfo
 from datetime import timezone
 from openai import OpenAI
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # env + db setup
 secret = os.getenv("WEBHOOK_SECRET")
@@ -95,15 +97,13 @@ async def get_cleaned_transcripts_last_24h():
     return cleaned
 
 @router.get("/daily_summary")
-async def generate_summary_email():
+async def daily_summary():
     """
-    Use GPT to classify calls into 2 sections and count booking types.
-    Then format a summary email accordingly.
+    Use OpenAI API to classify calls into 2 sections and count booking types.
+    Returns a structured summary of the calls in json format.
     """
 
     calls = await get_cleaned_transcripts_last_24h()
-
-    today_str = datetime.now(ZoneInfo("America/New_York")).strftime("%B %d, %Y")
 
     # Prepare context for GPT
     calls_text = ""
@@ -122,11 +122,11 @@ You are an assistant that writes structured call summaries for calls received by
 
 Classify each call into one of two categories:
 1. "Action/Call Back Required" (for something that needs follow-up).
-2. "Key Booking Interactions" (for something the agent handled successfully, no call back needed).
+2. "Key Interactions" (for something the agent handled successfully, no call back needed).
 
 Also count: 
 - Appointment Bookings 
-- Appointment Confirmations 
+- Appointment Confirmations
 
 ⚠️ VERY IMPORTANT: 
 Do not add any commentary, notes, explanations, or sections outside of this template. Give objective summaries, not emotions.
@@ -143,7 +143,7 @@ Output ONLY valid JSON in this exact structure:
       "summary": "<string>"
     }}
   ],
-  "key_booking_interactions": [
+  "key_interactions": [
     {{
       "name": "<string or null>",
       "phone": "<string or null>",
@@ -227,7 +227,7 @@ Here is a sample for reference:
       "summary": "Calling to update your information for the upcoming 2025 Temple University Oral History Project. If you wish to have your number removed from future call attempts, please call 800-201-4771."
     }}
   ],
-  "key_booking_interactions": [
+  "key_interactions": [
     {{
       "name": null,
       "phone": "(347) 585-0758",
@@ -259,10 +259,158 @@ Here are the calls to analyze:
     )
 
     raw_output = response.choices[0].message.content
-    
+
     try:
         parsed_json = json.loads(raw_output)
     except json.JSONDecodeError:
         return {"error": "Invalid JSON from summary", "raw_output": raw_output}
 
     return parsed_json
+
+@router.get("/generate_summary_email")
+async def generate_summary_email():
+    """
+    Generate a formatted summary email (HTML) using the structured JSON
+    from daily_summary() and call count from get_cleaned_transcripts_last_24h().
+    Email is sent to DAILY_EMAIL_RECIPIENTS using SMTP.
+    """
+    summary_json = await daily_summary()
+    calls_last_24h = await get_cleaned_transcripts_last_24h()
+    total_calls = len(calls_last_24h)
+
+    smtp_server = os.getenv("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("EMAIL_SMTP_PORT", 587))
+    smtp_user = os.getenv("EMAIL_USERNAME")
+    smtp_pass = os.getenv("EMAIL_PASSWORD")
+    sender_name = "Zenfru AI Assistant"
+    recipients = [r.strip() for r in os.getenv("DAILY_EMAIL_RECIPIENTS", "").split(",") if r.strip()]
+    cc_recipients = [r.strip() for r in os.getenv("DAILY_EMAIL_CC_RECIPIENTS", "").split(",") if r.strip()]
+
+    if not recipients or not smtp_user or not smtp_pass:
+        logging.warning("[Summary Email] Missing recipients or SMTP credentials, not sending email.")
+        return {"status": "skipped", "reason": "missing recipients or credentials"}
+
+    # Handle "no calls" case directly
+    if "note" in summary_json or total_calls == 0:
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Daily Call Summary</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa; padding: 20px; color: #333;">
+            <div style="max-width: 800px; margin: 0 auto; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 2em;">Zenfru AI</h1>
+                    <p style="margin: 5px 0 0;">Daily Call Summary</p>
+                </div>
+                <div style="padding: 30px;">
+                    <p>Hi Cesi and Dr. Andriy,</p>
+                    <p>No calls were received between 9am yesterday and 9am today.</p>
+                    <p>Thanks,<br/>Zenfru Team</p>
+                </div>
+                <div style="background: #f8f9fc; padding: 20px; text-align: center; color: #666; font-size: 0.9em;">
+                    <p>Summary email sent automatically by Zenfru AI Assistant.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    else:
+        # Extract counts
+        appointment_bookings = summary_json.get("appointment_bookings", 0)
+        appointment_confirmations = summary_json.get("appointment_confirmations", 0)
+
+        today = datetime.now(ZoneInfo("America/New_York"))
+        yesterday = today - timedelta(days=1)
+        date_range = f"{yesterday.strftime('%B %d, %Y')} to {today.strftime('%B %d, %Y')}"
+
+        # Helper to format entries
+        def format_entry(entry: dict) -> str:
+            name = entry.get("name")
+            phone = entry.get("phone")
+            date = entry.get("date")
+            time = entry.get("time")
+            summary = entry.get("summary", "")
+
+            phone_str = f"<u>{phone}</u>" if phone else None
+
+            if not name and not phone_str:
+                return f"Call on {date}, {time}: {summary}"
+            elif not name:
+                return f"Call from {phone_str} on {date}, {time}: {summary}"
+            elif not phone_str:
+                return f"{name} called on {date}, {time}: {summary}"
+            else:
+                return f"{name} called from {phone_str} on {date}, {time}: {summary}"
+
+        # Build HTML
+        action_calls = summary_json.get("action_call_back_required", [])
+        interaction_calls = summary_json.get("key_interactions", [])
+
+        def render_section(title: str, items: list) -> str:
+            if not items:
+                return ""
+            rows = "".join(
+                f"""<div style="margin:4px 0; line-height:1.6;">
+                        <span style="color:#6b21a8;">•</span> {format_entry(call)}
+                    </div>"""
+                for call in items
+            )
+            return f"""
+                <div class="section" style="margin-top:20px;">
+                    <h3 style="color:#6b21a8; border-bottom:2px solid #6b21a8; padding-bottom:10px;">{title}</h3>
+                    {rows}
+                </div>
+            """
+
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Daily Call Summary - Zenfru AI</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa; padding: 20px; color: #333;">
+            <div style="max-width: 800px; margin: 0 auto; background: white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px 20px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 2em;">Zenfru AI</h1>
+                    <p style="margin: 5px 0 0;">Daily Call Summary</p>
+                </div>
+                <div style="padding: 30px;">
+                    <p>Hi Cesi and Dr. Andriy,</p>
+                    <p>Here's a quick summary of calls received and actions required based on interactions from {date_range}.</p>
+                    <p style="font-size:16px; color:#6b21a8;"><b>📊 Total Calls:</b> {total_calls}</p>
+                    <ul>
+                        <li>Appointment Bookings: {appointment_bookings}</li>
+                        <li>Appointment Confirmations: {appointment_confirmations}</li>
+                    </ul>
+                    {render_section("📞 Action/Call Back Required", action_calls)}
+                    {render_section("💡 Key Interactions", interaction_calls)}
+                    <p><br/>Thanks,<br/>Zenfru Team</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+    # Send email
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = f"Zenfru || After Hours Calls Summary - {datetime.now().strftime('%B %d, %Y')}"
+    msg['From'] = f"{sender_name} <{smtp_user}>"
+    msg['To'] = ", ".join(recipients)
+    if cc_recipients:
+        msg['Cc'] = ", ".join(cc_recipients)
+    msg.attach(MIMEText(html, 'html'))
+
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        logging.info(f"[Summary Email] Sent daily summary to: {recipients}, cc: {cc_recipients}")
+        return {"status": "sent", "recipients": recipients, "cc": cc_recipients}
+    except Exception as e:
+        logging.error(f"[Summary Email] Failed to send: {e}")
+        return {"status": "error", "error": str(e)}

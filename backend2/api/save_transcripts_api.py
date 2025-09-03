@@ -53,10 +53,12 @@ async def get_transcript(request: Request):
 
     # Save raw payload to Mongo in UTC
     now_utc = datetime.now(ZoneInfo("UTC"))
-    db.raw_webhooks.insert_one({
-        "received_at_utc": now_utc,
-        "payload": data
-    })
+    
+    if data.get("data").get("agent_id")=='agent_3101k1e6xrv2f4eb0xz6nbbrz035':
+        db.raw_webhooks.insert_one({
+            "received_at_utc": now_utc,
+            "payload": data
+        })
 
     return {"status": "received"}
 
