@@ -433,10 +433,19 @@ def update_contact_preferred_provider(contact_id: str, preferred_provider: dict)
 
 def get_kolla_resources():
     """Fetch all resources from Kolla and return as a list."""
-    response = requests.get(KOLLA_RESOURCES_URL, headers=KOLLA_HEADERS)
-    if response.status_code == 200:
-        return response.json().get('resources', [])
-    return []
+    try:
+        response = requests.get(KOLLA_RESOURCES_URL, headers=KOLLA_HEADERS, timeout=15)
+        if response.status_code == 200:
+            return response.json().get('resources', [])
+        else:
+            logging.error(f"Failed to fetch Kolla resources: {response.status_code}")
+            return []
+    except requests.exceptions.Timeout:
+        logging.error("Timeout fetching Kolla resources")
+        return []
+    except Exception as e:
+        logging.error(f"Error fetching Kolla resources: {e}")
+        return []
 
 def find_resource(resources, resource_type, display_name=None):
     """Find a resource by type (and optionally display_name)."""
