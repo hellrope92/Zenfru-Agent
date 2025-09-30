@@ -7,7 +7,8 @@ Tracks patient interactions and outcomes
 import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from services.auth_service import require_api_key
 from pathlib import Path
 import logging
 import asyncio
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/api", tags=["conversation-logs"])
 logger = logging.getLogger(__name__)
 
 @router.post("/log_conversation_summary", status_code=201)
-async def log_conversation_summary(request: LogConversationRequest):
+async def log_conversation_summary(request: LogConversationRequest, authenticated: bool = Depends(require_api_key)):
     """
     Creates conversation logs at the end of each call
     Tracks patient interactions and outcomes
@@ -269,13 +270,11 @@ def determine_complexity(log_entry: Dict[str, Any]) -> str:
         return "medium"
 
 @router.get("/conversation_logs")
-async def get_conversation_logs(
-    patient_name: Optional[str] = None,
+async def get_conversation_logs(patient_name: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     interaction_type: Optional[str] = None,
-    limit: Optional[int] = 50
-):
+    limit: Optional[int] = 50, authenticated: bool = Depends(require_api_key)):
     """Get conversation logs with optional filtering"""
     try:
         logs_file = Path(__file__).parent.parent / "conversation_logs.json"
@@ -337,7 +336,7 @@ async def get_conversation_logs(
         raise HTTPException(status_code=500, detail=f"Error retrieving conversation logs: {str(e)}")
 
 @router.get("/conversation_logs/analytics")
-async def get_conversation_analytics():
+async def get_conversation_analytics(authenticated: bool = Depends(require_api_key)):
     """Get analytics and insights from conversation logs"""
     try:
         logs_file = Path(__file__).parent.parent / "conversation_logs.json"
@@ -416,7 +415,7 @@ async def get_conversation_analytics():
         raise HTTPException(status_code=500, detail=f"Error generating conversation analytics: {str(e)}")
 
 @router.delete("/conversation_logs/cleanup")
-async def cleanup_old_logs(days_to_keep: int = 30):
+async def cleanup_old_logs(days_to_keep: int = 30, authenticated: bool = Depends(require_api_key)):
     """Clean up old conversation logs"""
     try:
         logs_file = Path(__file__).parent.parent / "conversation_logs.json"

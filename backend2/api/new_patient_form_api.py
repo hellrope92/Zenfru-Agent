@@ -7,14 +7,15 @@ Used in the new patient onboarding process
 import requests
 from datetime import datetime
 from typing import Dict, Optional, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from services.auth_service import require_api_key
 import logging
 from api.models import SendNewPatientFormRequest
 
 router = APIRouter(prefix="/api", tags=["patient-forms"])
 
 @router.post("/send_new_patient_form")
-async def send_new_patient_form(request: SendNewPatientFormRequest):
+async def send_new_patient_form(request: SendNewPatientFormRequest, authenticated: bool = Depends(require_api_key)):
     """
     Sends new patient forms to a phone number
     Used in the new patient onboarding process
@@ -124,7 +125,7 @@ async def log_form_sent_event(form_data: Dict[str, Any]):
         print(f"Error logging form sent event: {e}")
 
 @router.get("/new_patient_form_status/{phone_number}")
-async def get_form_status(phone_number: str):
+async def get_form_status(phone_number: str, authenticated: bool = Depends(require_api_key)):
     """Check the status of a sent form"""
     try:
         formatted_phone = ''.join(filter(str.isdigit, phone_number))
@@ -145,7 +146,7 @@ async def get_form_status(phone_number: str):
         raise HTTPException(status_code=500, detail=f"Error checking form status: {str(e)}")
 
 @router.post("/resend_new_patient_form")
-async def resend_new_patient_form(request: SendNewPatientFormRequest):
+async def resend_new_patient_form(request: SendNewPatientFormRequest, authenticated: bool = Depends(require_api_key)):
     """Resend a new patient form if the original was not received"""
     try:
         # Add a note that this is a resend
@@ -161,7 +162,7 @@ async def resend_new_patient_form(request: SendNewPatientFormRequest):
         raise HTTPException(status_code=500, detail=f"Error resending patient form: {str(e)}")
 
 @router.get("/patient_forms/stats")
-async def get_form_stats():
+async def get_form_stats(authenticated: bool = Depends(require_api_key)):
     """Get statistics about patient forms"""
     try:
         # This would return actual statistics from a database

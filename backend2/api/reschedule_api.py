@@ -3,12 +3,13 @@ import requests
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from pathlib import Path
 from .models import RescheduleRequest
 from services.patient_interaction_logger import patient_logger
+from services.auth_service import require_api_key
 
 # Load environment variables
 load_dotenv()
@@ -288,7 +289,7 @@ class RescheduleByPhoneRequest(BaseModel):
         extra = Extra.allow
 
 @router.post("/reschedule_by_phone")
-async def reschedule_by_phone(request: RescheduleByPhoneRequest):
+async def reschedule_by_phone(request: RescheduleByPhoneRequest, authenticated: bool = Depends(require_api_key)):
     """
     Reschedule the latest appointment for a patient using their phone number.
     This endpoint finds the patient's latest appointment and reschedules it.
@@ -511,7 +512,7 @@ def find_operatory_for_provider(provider_id: str, preferred_operatory_id: Option
         return None
 
 @router.post("/reschedule_patient_appointment")
-async def reschedule_patient_appointment(request: FlexibleRescheduleRequest):
+async def reschedule_patient_appointment(request: FlexibleRescheduleRequest, authenticated: bool = Depends(require_api_key)):
     """
     Reschedule an existing appointment using EagleSoft-compatible workflow:
     1. Cancel the existing appointment
@@ -1071,7 +1072,7 @@ async def fetch_patient_details_by_contact_id(contact_id: str) -> Dict[str, Any]
 
 # Legacy endpoint for backward compatibility
 @router.post("/reschedule_appointment")
-async def reschedule_appointment_legacy(request: RescheduleRequest):
+async def reschedule_appointment_legacy(request: RescheduleRequest, authenticated: bool = Depends(require_api_key)):
     """Legacy reschedule endpoint for backward compatibility"""
     # Convert old format to new format
     flexible_request = FlexibleRescheduleRequest(

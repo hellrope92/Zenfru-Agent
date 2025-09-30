@@ -4,9 +4,10 @@ Provides endpoints for configuring reports, viewing statistics, and managing the
 """
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from services.patient_interaction_logger import patient_logger
+from services.auth_service import require_api_key
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -37,7 +38,7 @@ class ManualReportRequest(BaseModel):
     send_email: Optional[bool] = True  # Default to True instead of False
 
 @router.post("/configure_reporting")
-async def configure_reporting(request: ReportingConfigRequest):
+async def configure_reporting(request: ReportingConfigRequest, authenticated: bool = Depends(require_api_key)):
     """Update reporting system configuration"""
     try:
         config_updates = {}
@@ -82,7 +83,7 @@ async def configure_reporting(request: ReportingConfigRequest):
         raise HTTPException(status_code=500, detail=f"Error updating configuration: {str(e)}")
 
 @router.get("/reporting_config")
-async def get_reporting_config():
+async def get_reporting_config(authenticated: bool = Depends(require_api_key)):
     """Get current reporting system configuration (sensitive data masked)"""
     try:
         config = patient_logger.config.copy()
@@ -100,7 +101,7 @@ async def get_reporting_config():
         raise HTTPException(status_code=500, detail=f"Error retrieving configuration: {str(e)}")
 
 @router.post("/generate_report")
-async def generate_manual_report(request: ManualReportRequest):
+async def generate_manual_report(request: ManualReportRequest, authenticated: bool = Depends(require_api_key)):
     """Generate a manual daily report"""
     try:
         # Parse target date - default to previous day
@@ -147,7 +148,7 @@ async def generate_manual_report(request: ManualReportRequest):
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 @router.get("/generate_daily_report")
-async def generate_daily_report_get():
+async def generate_daily_report_get(authenticated: bool = Depends(require_api_key)):
     """Generate and email a daily report for the current day."""
     try:
         target_date = date.today()
@@ -190,7 +191,7 @@ async def generate_daily_report_get():
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 @router.get("/interaction_statistics")
-async def get_interaction_statistics(days: Optional[int] = 7):
+async def get_interaction_statistics(days: Optional[int] = 7, authenticated: bool = Depends(require_api_key)):
     """Get interaction statistics for the specified number of days"""
     try:
         if days < 1 or days > 365:
@@ -206,7 +207,7 @@ async def get_interaction_statistics(days: Optional[int] = 7):
         raise HTTPException(status_code=500, detail=f"Error retrieving statistics: {str(e)}")
 
 @router.get("/daily_interactions/{target_date}")
-async def get_daily_interactions(target_date: str):
+async def get_daily_interactions(target_date: str, authenticated: bool = Depends(require_api_key)):
     """Get all interactions for a specific date"""
     try:
         # Parse date
@@ -228,7 +229,7 @@ async def get_daily_interactions(target_date: str):
         raise HTTPException(status_code=500, detail=f"Error retrieving daily interactions: {str(e)}")
 
 @router.get("/interaction_summary")
-async def get_today_summary():
+async def get_today_summary(authenticated: bool = Depends(require_api_key)):
     """Get a quick summary of today's interactions"""
     try:
         today_interactions = patient_logger.get_daily_interactions(date.today())
@@ -252,7 +253,7 @@ async def get_today_summary():
         raise HTTPException(status_code=500, detail=f"Error retrieving today's summary: {str(e)}")
 
 @router.post("/test_email")
-async def test_email_configuration():
+async def test_email_configuration(authenticated: bool = Depends(require_api_key)):
     """Test the email configuration by sending a test email"""
     try:
         if not patient_logger.config["email"]["recipients"]:
@@ -292,7 +293,7 @@ async def test_email_configuration():
         raise HTTPException(status_code=500, detail=f"Error sending test email: {str(e)}")
 
 @router.get("/log_files")
-async def list_log_files():
+async def list_log_files(authenticated: bool = Depends(require_api_key)):
     """List all available log files"""
     try:
         log_files = []

@@ -7,10 +7,11 @@ Uses local caching with 24-hour refresh for schedules from Kolla API
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Depends, Query
 import logging
 from services.local_cache_service import LocalCacheService
 from services.availability_service import AvailabilityService
+from services.auth_service import require_api_key
 
 router = APIRouter(prefix="/api", tags=["availability"])
 
@@ -202,7 +203,7 @@ def calculate_available_slots(schedule_blocks: List[Dict], appointments: List[Di
     return available_slots
 
 @router.get("/availability/refresh")
-async def refresh_availability_cache():
+async def refresh_availability_cache(authenticated: bool = Depends(require_api_key)):
     """Manually refresh the availability cache for the next 7 days"""
     try:
         today = datetime.now()
@@ -237,7 +238,7 @@ async def refresh_availability_cache():
         raise HTTPException(status_code=500, detail=f"Error refreshing cache: {str(e)}")
 
 @router.get("/availability/cache-status")
-async def get_cache_status():
+async def get_cache_status(authenticated: bool = Depends(require_api_key)):
     """Get information about the current cache status"""
     try:
         # Get all cached schedules

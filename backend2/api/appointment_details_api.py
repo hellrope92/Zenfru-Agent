@@ -1,8 +1,9 @@
 import requests
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from services.local_cache_service import LocalCacheService
+from services.auth_service import require_api_key
 import json
 
 KOLLA_BASE_URL = "https://unify.kolla.dev/dental/v1"
@@ -21,7 +22,7 @@ class AppointmentDetailsRequest(BaseModel):
     phone: str
 
 @router.post("/get_appointment_details")
-async def get_appointment_details(request: AppointmentDetailsRequest):
+async def get_appointment_details(request: AppointmentDetailsRequest, authenticated: bool = Depends(require_api_key)):
     """
     Get detailed appointment information for a patient using phone number
     Parameters: phone (required) - Patient's phone number for identification

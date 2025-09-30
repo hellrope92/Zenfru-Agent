@@ -2,7 +2,8 @@ import json, time, hmac, os
 from hashlib import sha256
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from fastapi import Request, APIRouter
+from fastapi import APIRouter, HTTPException, Depends, Request
+from services.auth_service import require_api_key
 from pymongo import MongoClient
 
 
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/api", tags=["webhook"])
 
 # POST: Receive webhook from ElevenLabs
 @router.post("/get_transcript")
-async def get_transcript(request: Request):
+async def get_transcript(request: Request, authenticated: bool = Depends(require_api_key)):
     payload = await request.body()
 
     # Get signature header
@@ -65,7 +66,7 @@ async def get_transcript(request: Request):
 
 # GET: Fetch the latest saved webhook payload
 @router.get("/latest_transcript")
-def get_latest_transcript():
+def get_latest_transcript(authenticated: bool = Depends(require_api_key)):
     latest_doc = db.raw_webhooks.find_one(sort=[("_id", -1)])
     if not latest_doc:
         return {"error": "No transcripts found"}

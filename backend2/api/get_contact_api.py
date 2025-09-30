@@ -10,7 +10,8 @@ import requests
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from services.auth_service import require_api_key
 from dotenv import load_dotenv
 import logging
 
@@ -32,7 +33,7 @@ KOLLA_HEADERS = {
 }
 
 @router.post("/get_contact")
-async def get_contact(request: GetContactRequest):
+async def get_contact(request: GetContactRequest, authenticated: bool = Depends(require_api_key)):
     """
     Retrieves existing patient contact information using Kolla API filters
     Parameters: phone (required), name, dob (optional for legacy support)
@@ -87,7 +88,7 @@ async def fetch_contacts_by_phone_filter(patient_phone: str) -> Optional[list]:
         return None
 
 @router.get("/get_contact/{patient_name}/{patient_dob}")
-async def get_contact_by_url(patient_name: str, patient_dob: str):
+async def get_contact_by_url(patient_name: str, patient_dob: str, authenticated: bool = Depends(require_api_key)):
     """
     Alternative GET endpoint for retrieving contact information (legacy support)
     URL format: /api/get_contact/{patient_name}/{patient_dob}
@@ -100,7 +101,7 @@ async def get_contact_by_url(patient_name: str, patient_dob: str):
     }
 
 @router.post("/get_contact/refresh")
-async def refresh_contact_cache(request: GetContactRequest):
+async def refresh_contact_cache(request: GetContactRequest, authenticated: bool = Depends(require_api_key)):
     """Force refresh contact data from Kolla API"""
     try:
         # Since we're not using cache anymore, this just fetches fresh data
@@ -118,11 +119,9 @@ async def refresh_contact_cache(request: GetContactRequest):
         raise HTTPException(status_code=500, detail=f"Error refreshing contact data: {str(e)}")
 
 @router.get("/contacts/search")
-async def search_contacts(
-    name: Optional[str] = None,
+async def search_contacts(name: Optional[str] = None,
     email: Optional[str] = None,
-    phone: Optional[str] = None
-):
+    phone: Optional[str] = None, authenticated: bool = Depends(require_api_key)):
     """
     Search contacts with flexible parameters using Kolla API filters
     """

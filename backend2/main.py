@@ -21,6 +21,7 @@ from services.getkolla_service import GetKollaService
 from services.availability_service import AvailabilityService
 from services.patient_interaction_logger import patient_logger
 from services.supabase_log_handler import SupabaseLogHandler
+from services.auth_service import require_api_key
 
 # Import API routers
 from api import (
@@ -40,7 +41,8 @@ from api import (
     get_current,
     reporting_api,
     save_transcripts_api,
-    transcript_summary_api
+    transcript_summary_api,
+    auth_api
 )
 
 
@@ -147,12 +149,12 @@ def create_schedule_endpoints():
     """Create schedule endpoints with proper dependency injection"""
     
     @app.get("/api/availability", tags=["schedule"])
-    async def get_availability(date: str, iscleaning: bool = False):
+    async def get_availability(date: str, iscleaning: bool = False, authenticated: bool = Depends(require_api_key)):
         """Enhanced availability API - takes a date and iscleaning flag, returns 3 days of availability"""
         return await schedule_api.get_availability(date, iscleaning)
     
     @app.get("/api/debug/appointments", tags=["debug"])
-    async def debug_appointments(date: str, iscleaning: bool = False):
+    async def debug_appointments(date: str, iscleaning: bool = False, authenticated: bool = Depends(require_api_key)):
         """Debug endpoint to show raw appointment data with provider filtering"""
         return await schedule_api.debug_appointments(date, iscleaning)
 
@@ -162,7 +164,8 @@ def create_booking_endpoints():
     @app.post("/api/book_patient_appointment", tags=["booking"])
     async def book_patient_appointment(
         request: booking_api.BookAppointmentRequest,
-        getkolla_service: GetKollaService = Depends(get_getkolla_service)
+        getkolla_service: GetKollaService = Depends(get_getkolla_service),
+        authenticated: bool = Depends(require_api_key)
     ):
         """Book a new patient appointment using GetKolla API"""
         return await booking_api.book_patient_appointment(request, getkolla_service)
@@ -173,7 +176,8 @@ def create_patient_services_endpoints():
     @app.post("/api/send_new_patient_form", tags=["patient-services"])
     async def send_new_patient_form(
         request: patient_services_api.SendFormRequest,
-        knowledge_base: Dict = Depends(get_knowledge_base)
+        knowledge_base: Dict = Depends(get_knowledge_base),
+        authenticated: bool = Depends(require_api_key)
     ):
         """Send new patient forms to the provided phone number"""
         return await patient_services_api.send_new_patient_form(request, knowledge_base)
@@ -181,7 +185,8 @@ def create_patient_services_endpoints():
     @app.post("/api/log_callback_request", tags=["patient-services"])
     async def log_callback_request(
         request: patient_services_api.CallbackRequest,
-        callback_requests: List = Depends(get_callback_requests)
+        callback_requests: List = Depends(get_callback_requests),
+        authenticated: bool = Depends(require_api_key)
     ):
         """Log a callback request for staff follow-up"""
         return await patient_services_api.log_callback_request(request, callback_requests)
@@ -189,7 +194,8 @@ def create_patient_services_endpoints():
     @app.post("/api/answer_faq_query", tags=["patient-services"])
     async def answer_faq_query(
         request: patient_services_api.FAQRequest,
-        knowledge_base: Dict = Depends(get_knowledge_base)
+        knowledge_base: Dict = Depends(get_knowledge_base),
+        authenticated: bool = Depends(require_api_key)
     ):
         """Answer frequently asked questions using knowledge base"""
         return await patient_services_api.answer_faq_query(request, knowledge_base)
@@ -197,7 +203,8 @@ def create_patient_services_endpoints():
     @app.post("/api/log_conversation_summary", tags=["patient-services"])
     async def log_conversation_summary(
         request: patient_services_api.ConversationSummaryRequest,
-        conversation_logs: List = Depends(get_conversation_logs)
+        conversation_logs: List = Depends(get_conversation_logs),
+        authenticated: bool = Depends(require_api_key)
     ):
         """Log a comprehensive summary of the conversation"""
         return await patient_services_api.log_conversation_summary(request, conversation_logs)
@@ -210,36 +217,38 @@ def create_debug_endpoints():
         getkolla_service: GetKollaService = Depends(get_getkolla_service),
         schedule: Dict = Depends(get_schedule),
         bookings: List = Depends(get_bookings),
-        knowledge_base: Dict = Depends(get_knowledge_base)
+        knowledge_base: Dict = Depends(get_knowledge_base),
+        authenticated: bool = Depends(require_api_key)
     ):
         """Health check endpoint"""
         return await debug_api.health_check(getkolla_service, schedule, bookings, knowledge_base)
     
     @app.get("/api/getkolla/test", tags=["debug"])
-    async def test_getkolla_api(getkolla_service: GetKollaService = Depends(get_getkolla_service)):
+    async def test_getkolla_api(getkolla_service: GetKollaService = Depends(get_getkolla_service), authenticated: bool = Depends(require_api_key)):
         """Test GetKolla API connectivity and data fetch"""
         return await debug_api.test_getkolla_api(getkolla_service)
     
     @app.get("/api/debug/schedule", tags=["debug"])
     async def get_debug_schedule(
         schedule: Dict = Depends(get_schedule),
-        bookings: List = Depends(get_bookings)
+        bookings: List = Depends(get_bookings),
+        authenticated: bool = Depends(require_api_key)
     ):
         """Debug endpoint to view the clinic schedule and bookings"""
         return await debug_api.get_debug_schedule(schedule, bookings)
     
     @app.get("/api/debug/callbacks", tags=["debug"])
-    async def get_debug_callbacks(callback_requests: List = Depends(get_callback_requests)):
+    async def get_debug_callbacks(callback_requests: List = Depends(get_callback_requests), authenticated: bool = Depends(require_api_key)):
         """Debug endpoint to view all callback requests"""
         return await debug_api.get_debug_callbacks(callback_requests)
     
     @app.get("/api/debug/conversations", tags=["debug"])
-    async def get_debug_conversations(conversation_logs: List = Depends(get_conversation_logs)):
+    async def get_debug_conversations(conversation_logs: List = Depends(get_conversation_logs), authenticated: bool = Depends(require_api_key)):
         """Debug endpoint to view all conversation logs"""
         return await debug_api.get_debug_conversations(conversation_logs)
     
     @app.get("/api/debug/knowledge_base", tags=["debug"])
-    async def get_debug_knowledge_base(knowledge_base: Dict = Depends(get_knowledge_base)):
+    async def get_debug_knowledge_base(knowledge_base: Dict = Depends(get_knowledge_base), authenticated: bool = Depends(require_api_key)):
         """Debug endpoint to view the knowledge base"""
         return await debug_api.get_debug_knowledge_base(knowledge_base)
     
@@ -255,6 +264,7 @@ create_patient_services_endpoints()
 create_debug_endpoints()
 
 # Include all new router-based APIs
+app.include_router(auth_api.router)
 app.include_router(appointment_details_api.router)
 app.include_router(availability_api.router)
 app.include_router(get_appointment_api.router)
@@ -272,7 +282,14 @@ app.include_router(transcript_summary_api.router)
 
 if __name__ == "__main__":    
     logging.info("🦷 Starting BrightSmile Dental AI Assistant - Modular Backend")
-    logging.info("📋 Available endpoints organized by modules:")
+    logging.info("� Authentication: API Key required for all endpoints (except /healthz)")
+    logging.info("�📋 Available endpoints organized by modules:")
+    logging.info("")
+    logging.info("🔐 Authentication Module:")
+    logging.info("   - POST /auth/generate-key (generate new API key)")
+    logging.info("   - GET  /auth/keys (list API keys)")
+    logging.info("   - DELETE /auth/keys (revoke API key)")
+    logging.info("   - GET  /auth/test (test authentication)")
     logging.info("")
     logging.info("📅 Schedule & Availability Module:")
     logging.info("   - GET  /api/availability?date=YYYY-MM-DD (returns 3 days)")

@@ -12,7 +12,8 @@ import requests
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from services.auth_service import require_api_key
 from dotenv import load_dotenv
 import logging
 
@@ -34,7 +35,7 @@ KOLLA_HEADERS = {
 }
 
 @router.post("/get_appointment")
-async def get_appointment(request: GetAppointmentRequest):
+async def get_appointment(request: GetAppointmentRequest, authenticated: bool = Depends(require_api_key)):
     """
     Retrieves existing appointment information for a patient using Kolla API filters
     Parameters: phone (required)
@@ -239,7 +240,7 @@ def calculate_duration(start_time: str, end_time: str) -> Optional[int]:
     return None
 
 @router.get("/get_appointment_by_phone/{patient_phone}")
-async def get_appointment_by_phone_only(patient_phone: str):
+async def get_appointment_by_phone_only(patient_phone: str, authenticated: bool = Depends(require_api_key)):
     """
     GET endpoint for retrieving appointments by phone number only
     URL format: /api/get_appointment_by_phone/{patient_phone}
@@ -248,7 +249,7 @@ async def get_appointment_by_phone_only(patient_phone: str):
     return await get_appointment(request)
 
 @router.post("/get_appointment/refresh")
-async def refresh_appointments_cache(request: GetAppointmentRequest):
+async def refresh_appointments_cache(request: GetAppointmentRequest, authenticated: bool = Depends(require_api_key)):
     """Force refresh appointment data from Kolla API"""
     try:
         # Normalize phone number
@@ -269,12 +270,10 @@ async def refresh_appointments_cache(request: GetAppointmentRequest):
         raise HTTPException(status_code=500, detail=f"Error refreshing appointments data: {str(e)}")
 
 @router.get("/appointments/search")
-async def search_appointments(
-    phone: Optional[str] = None,
+async def search_appointments(phone: Optional[str] = None,
     contact_id: Optional[str] = None,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-):
+    end_date: Optional[str] = None, authenticated: bool = Depends(require_api_key)):
     """
     Search appointments with flexible parameters using Kolla API filters
     """

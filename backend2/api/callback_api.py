@@ -7,13 +7,14 @@ Parameters: name, contact, reason, preferred_callback_time
 import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 import logging
 import asyncio
 
 from api.models import LogCallbackRequest
 from services.patient_interaction_logger import patient_logger
+from services.auth_service import require_api_key
 
 router = APIRouter(prefix="/api", tags=["callbacks"])
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 callback_requests = []
 
 @router.post("/log_callback_request", status_code=201)
-async def log_callback_request(request: LogCallbackRequest):
+async def log_callback_request(request: LogCallbackRequest, authenticated: bool = Depends(require_api_key)):
     """Records a callback request and persists to file"""
     try:
         # Create callback request entry
@@ -178,11 +179,9 @@ async def save_callback_to_file(callback_entry: Dict[str, Any]):
     await asyncio.to_thread(sync_save)
 
 @router.get("/callback_requests")
-async def get_callback_requests(
-    status: Optional[str] = None,
+async def get_callback_requests(status: Optional[str] = None,
     priority: Optional[str] = None,
-    limit: Optional[int] = 50
-):
+    limit: Optional[int] = 50, authenticated: bool = Depends(require_api_key)):
     """Get all callback requests with optional filtering"""
     try:
         # Load from file to get persistent data
@@ -230,7 +229,7 @@ async def get_callback_requests(
         raise HTTPException(status_code=500, detail=f"Error retrieving callback requests: {str(e)}")
 
 @router.get("/callback_requests/{callback_id}")
-async def get_callback_request(callback_id: str):
+async def get_callback_request(callback_id: str, authenticated: bool = Depends(require_api_key)):
     """Get a specific callback request by ID"""
     try:
         # Search in memory first
@@ -262,7 +261,7 @@ async def get_callback_request(callback_id: str):
         raise HTTPException(status_code=500, detail=f"Error retrieving callback request: {str(e)}")
 
 @router.put("/callback_requests/{callback_id}/status", status_code=200)
-async def update_callback_status(callback_id: str, status: str, notes: Optional[str] = None):
+async def update_callback_status(callback_id: str, status: str, notes: Optional[str] = None, authenticated: bool = Depends(require_api_key)):
     """Update the status of an existing callback request"""
     valid = ["pending","in_progress","completed","cancelled"]
     if status not in valid:
@@ -304,7 +303,7 @@ async def update_callback_status(callback_id: str, status: str, notes: Optional[
     return {"success": True, "callback_id": callback_id, "new_status": status}
 
 @router.get("/callback_requests/stats/summary")
-async def get_callback_stats():
+async def get_callback_stats(authenticated: bool = Depends(require_api_key)):
     """Get summary statistics for callback requests"""
     try:
         # Load all callbacks

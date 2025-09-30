@@ -1,7 +1,8 @@
 import os, json, logging, smtplib
 from datetime import datetime, timedelta
 from pymongo import MongoClient
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Depends
+from services.auth_service import require_api_key
 from zoneinfo import ZoneInfo
 from datetime import timezone
 from openai import OpenAI
@@ -33,7 +34,7 @@ def format_us_phone_number(number: str | None) -> str | None:
 
 
 @router.get("/transcripts/last_24h")
-async def get_cleaned_transcripts_last_24h():
+async def get_cleaned_transcripts_last_24h(authenticated: bool = Depends(require_api_key)):
     """
     Fetch transcripts from the last 24 hours (UTC), 
     clean them, and return relevant fields (i.e., name, phone number, time in EST, conversation).
@@ -97,7 +98,7 @@ async def get_cleaned_transcripts_last_24h():
     return cleaned
 
 @router.get("/daily_summary")
-async def daily_summary():
+async def daily_summary(authenticated: bool = Depends(require_api_key)):
     """
     Use OpenAI API to classify calls into 2 sections and count booking types.
     Returns a structured summary of the calls in json format.
@@ -268,7 +269,7 @@ Here are the calls to analyze:
     return parsed_json
 
 @router.get("/generate_summary_email")
-async def generate_summary_email():
+async def generate_summary_email(authenticated: bool = Depends(require_api_key)):
     """
     Generate a formatted summary email (HTML) using the structured JSON
     from daily_summary() and call count from get_cleaned_transcripts_last_24h().

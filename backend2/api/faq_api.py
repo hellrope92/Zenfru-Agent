@@ -7,7 +7,8 @@ Used for general clinic information questions
 import json
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from services.auth_service import require_api_key
 from pathlib import Path
 import logging
 from api.models import AnswerFAQRequest
@@ -26,7 +27,7 @@ def load_knowledge_base() -> Dict[str, Any]:
         return {}
 
 @router.post("/answer_faq_query")
-async def answer_faq_query(request: AnswerFAQRequest):
+async def answer_faq_query(request: AnswerFAQRequest, authenticated: bool = Depends(require_api_key)):
     """
     Queries the knowledge base for FAQ responses
     Used for general clinic information questions
@@ -263,7 +264,7 @@ async def log_faq_query(query: str, category: str, answer: str):
         logging.error(f"Error logging FAQ query: {e}")
 
 @router.get("/faq/categories")
-async def get_faq_categories():
+async def get_faq_categories(authenticated: bool = Depends(require_api_key)):
     """Get available FAQ categories"""
     try:
         knowledge_base = load_knowledge_base()
@@ -332,7 +333,7 @@ async def get_faq_categories():
         raise HTTPException(status_code=500, detail=f"Error getting FAQ categories: {str(e)}")
 
 @router.get("/faq/popular")
-async def get_popular_queries():
+async def get_popular_queries(authenticated: bool = Depends(require_api_key)):
     """Get most popular FAQ queries"""
     try:
         log_file = Path(__file__).parent.parent / "faq_logs.json"

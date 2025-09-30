@@ -1,11 +1,12 @@
 import requests
 import os
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
 from services.patient_interaction_logger import patient_logger
+from services.auth_service import require_api_key
 import logging
 
 # Load environment variables
@@ -234,7 +235,7 @@ class ConfirmByPhoneRequest(BaseModel):
     notes: Optional[str] = None
 
 @router.post("/confirm_by_phone", status_code=200)
-async def confirm_by_phone(request: ConfirmByPhoneRequest):
+async def confirm_by_phone(request: ConfirmByPhoneRequest, authenticated: bool = Depends(require_api_key)):
     """
     Confirm the latest appointment for a patient using their phone number.
     This endpoint finds the patient's latest appointment and confirms it.
@@ -292,7 +293,7 @@ async def confirm_by_phone(request: ConfirmByPhoneRequest):
         raise HTTPException(status_code=500, detail="Internal error confirming appointment by phone")
 
 @router.post("/confirm_appointment")
-async def confirm_appointment_endpoint(request: ConfirmRequest):
+async def confirm_appointment_endpoint(request: ConfirmRequest, authenticated: bool = Depends(require_api_key)):
     """Confirm an appointment using Kolla API with proper format."""
     try:
         logger.info(f"Confirm appointment endpoint called for {request.appointment_id}")
