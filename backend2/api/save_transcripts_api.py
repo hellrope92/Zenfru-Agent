@@ -2,8 +2,8 @@ import json, time, hmac, os
 from hashlib import sha256
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, HTTPException, Depends, Request
-from services.auth_service import require_api_key
+from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from services.auth_service import require_api_key, verify_api_key
 from pymongo import MongoClient
 
 
@@ -16,7 +16,34 @@ router = APIRouter(prefix="/api", tags=["webhook"])
 
 # POST: Receive webhook from ElevenLabs
 @router.post("/get_transcript")
-async def get_transcript(request: Request, authenticated: bool = Depends(require_api_key)):
+async def get_transcript(
+    request: Request, 
+    api_key: str = Query(None, description="API key for webhook authentication")
+):
+    """
+    Webhook endpoint that accepts authentication via header OR query parameter
+    For ElevenLabs post-call webhooks, use: ?api_key=your-api-key
+    """
+    # Check authentication - either via query parameter or header
+    authenticated = False
+    
+    # Try query parameter first
+    if api_key and verify_api_key(api_key):
+        authenticated = True
+    else:
+        # Try header authentication
+        try:
+            auth_header = request.headers.get("authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+                if verify_api_key(token):
+                    authenticated = True
+        except Exception:
+            pass
+    
+    if not authenticated:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    
     payload = await request.body()
 
     # Get signature header
