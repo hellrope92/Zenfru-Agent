@@ -46,21 +46,39 @@ async def get_appointment(request: GetAppointmentRequest, authenticated: bool = 
     """
     try:
         logger.info(f"Fetching appointments for patient phone: {request.phone}")
-        
+
+        # Require caller parameter to verify the call origin
+        if not request.caller:
+            logger.warning("Missing caller parameter in get_appointment request")
+            raise HTTPException(status_code=400, detail="caller parameter is required")
+
+        # Normalize phone and caller (digits only)
+        def _normalize_number(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            return ''.join(filter(str.isdigit, s))
+
+        normalized_phone = _normalize_number(request.phone)
+        normalized_caller = _normalize_number(request.caller)
+
+        logger.info(f"Normalized phone={normalized_phone}, caller={normalized_caller}")
+
+        # Ensure caller matches phone (allow country code differences via endswith)
+        if not (normalized_caller.endswith(normalized_phone) or normalized_phone.endswith(normalized_caller)):
+            logger.warning(f"Caller number does not match phone: caller={request.caller}, phone={request.phone}")
+            raise HTTPException(status_code=403, detail="Caller number does not match provided phone")
+
         # First verify DOB against Kolla API
         is_verified, verification_message, contact_data = await dob_verification_service.verify_dob(
             request.phone, request.dob
         )
-        
+
         if not is_verified:
             logger.warning(f"DOB verification failed for phone: {request.phone} - {verification_message}")
             raise HTTPException(status_code=403, detail=f"DOB verification failed: {verification_message}")
-        
+
         logger.info(f"✅ DOB verified for phone: {request.phone}")
-        
-        # Normalize phone number (remove spaces, dashes, etc.)
-        normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-            
+
         # Use Kolla API to get appointments for this phone number
         appointments = await fetch_appointments_by_phone_filter(normalized_phone)
         

@@ -101,10 +101,12 @@ class ConversationSummaryRequest(BaseModel):
 class GetAppointmentRequest(BaseModel):
     phone: str
     dob: str  # Required DOB for verification
+    caller: Optional[str] = None  # Number the call is coming from; used to verify caller matches phone
 
 class AppointmentDetailsRequest(BaseModel):
     phone: str
     dob: str  # Required DOB for verification
+    caller: Optional[str] = None
 
 class ConfirmByPhoneRequest(BaseModel):
     phone: str
@@ -117,6 +119,7 @@ class ConfirmByPhoneRequest(BaseModel):
 class GetContactRequest(BaseModel):
     phone: str  # Changed from name to phone for consistent patient identification
     dob: str  # Required DOB for verification
+    caller: Optional[str] = None
     # Legacy support
     name: Optional[str] = None
 

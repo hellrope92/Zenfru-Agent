@@ -43,22 +43,42 @@ async def get_contact(request: GetContactRequest, authenticated: bool = Depends(
     """
     try:
         logger.info(f"Fetching contact for patient phone: {request.phone}")
-        
+
+        # Require caller to be provided for verification
+        if not request.caller:
+            logger.warning("Missing caller parameter in get_contact request")
+            raise HTTPException(status_code=400, detail="caller parameter is required")
+
+        # Normalize phone and caller (digits only) and perform loose match (endswith) to account for country codes
+        def _normalize_number(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            return ''.join(filter(str.isdigit, s))
+
+        normalized_phone = _normalize_number(request.phone)
+        normalized_caller = _normalize_number(request.caller)
+
+        logger.info(f"Normalized phone={normalized_phone}, caller={normalized_caller}")
+
+        # Ensure caller matches phone (allow country code differences)
+        if not (normalized_caller.endswith(normalized_phone) or normalized_phone.endswith(normalized_caller)):
+            logger.warning(f"Caller number does not match phone: caller={request.caller}, phone={request.phone}")
+            raise HTTPException(status_code=403, detail="Caller number does not match provided phone")
+
         # First verify DOB against Kolla API
         is_verified, verification_message, contact_data = await dob_verification_service.verify_dob(
             request.phone, request.dob
         )
-        
+
         if not is_verified:
             logger.warning(f"DOB verification failed for phone: {request.phone} - {verification_message}")
             raise HTTPException(status_code=403, detail=f"DOB verification failed: {verification_message}")
-        
+
         logger.info(f"✅ DOB verified for phone: {request.phone}")
-        
-        # Normalize phone number
-        normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-        
+
         # Use Kolla API filter to search for contacts by phone number
+        
+        
         contacts = await fetch_contacts_by_phone_filter(normalized_phone)
         if contacts:
             return {
