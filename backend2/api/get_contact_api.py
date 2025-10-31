@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException, Depends
 from services.auth_service import require_api_key
+from services.dob_verification_service import dob_verification_service
 from dotenv import load_dotenv
 import logging
 
@@ -36,11 +37,23 @@ KOLLA_HEADERS = {
 async def get_contact(request: GetContactRequest, authenticated: bool = Depends(require_api_key)):
     """
     Retrieves existing patient contact information using Kolla API filters
-    Parameters: phone (required), name, dob (optional for legacy support)
+    Parameters: phone (required), dob (required for verification), name (optional for legacy support)
     Used for booking appointments with existing patients
+    DOB verification is required for accessing personal information.
     """
     try:
         logger.info(f"Fetching contact for patient phone: {request.phone}")
+        
+        # First verify DOB against Kolla API
+        is_verified, verification_message, contact_data = await dob_verification_service.verify_dob(
+            request.phone, request.dob
+        )
+        
+        if not is_verified:
+            logger.warning(f"DOB verification failed for phone: {request.phone} - {verification_message}")
+            raise HTTPException(status_code=403, detail=f"DOB verification failed: {verification_message}")
+        
+        logger.info(f"✅ DOB verified for phone: {request.phone}")
         
         # Normalize phone number
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
@@ -51,6 +64,7 @@ async def get_contact(request: GetContactRequest, authenticated: bool = Depends(
             return {
                 "success": True,
                 "patient_phone": request.phone,
+                "dob_verified": True,
                 "contacts": contacts,
                 "source": "kolla_api_filter"
             }
@@ -87,23 +101,28 @@ async def fetch_contacts_by_phone_filter(patient_phone: str) -> Optional[list]:
         logging.error(f"   ❌ Error fetching contact by phone filter: {e}")
         return None
 
-@router.get("/get_contact/{patient_name}/{patient_dob}")
-async def get_contact_by_url(patient_name: str, patient_dob: str, authenticated: bool = Depends(require_api_key)):
+@router.get("/get_contact/{patient_phone}/{patient_dob}")
+async def get_contact_by_url(patient_phone: str, patient_dob: str, authenticated: bool = Depends(require_api_key)):
     """
-    Alternative GET endpoint for retrieving contact information (legacy support)
-    URL format: /api/get_contact/{patient_name}/{patient_dob}
-    Note: This endpoint requires phone number for accurate lookup
+    GET endpoint for retrieving contact information by phone and DOB
+    URL format: /api/get_contact/{patient_phone}/{patient_dob}
     """
-    return {
-        "success": False,
-        "message": "This endpoint is deprecated. Please use POST /api/get_contact with phone parameter.",
-        "suggestion": "Use POST /api/get_contact with phone number for accurate patient identification"
-    }
+    request = GetContactRequest(phone=patient_phone, dob=patient_dob)
+    return await get_contact(request)
 
 @router.post("/get_contact/refresh")
 async def refresh_contact_cache(request: GetContactRequest, authenticated: bool = Depends(require_api_key)):
-    """Force refresh contact data from Kolla API"""
+    """Force refresh contact data from Kolla API with DOB verification"""
     try:
+        # First verify DOB against Kolla API
+        is_verified, verification_message, contact_data = await dob_verification_service.verify_dob(
+            request.phone, request.dob
+        )
+        
+        if not is_verified:
+            logger.warning(f"DOB verification failed for phone: {request.phone} - {verification_message}")
+            raise HTTPException(status_code=403, detail=f"DOB verification failed: {verification_message}")
+        
         # Since we're not using cache anymore, this just fetches fresh data
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         contacts = await fetch_contacts_by_phone_filter(normalized_phone)
@@ -111,6 +130,7 @@ async def refresh_contact_cache(request: GetContactRequest, authenticated: bool 
             "success": True,
             "message": "Contact data refreshed from Kolla API",
             "patient_phone": request.phone,
+            "dob_verified": True,
             "contact_found": bool(contacts),
             "contacts": contacts
         }

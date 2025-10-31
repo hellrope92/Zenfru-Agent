@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException, Depends
 from services.auth_service import require_api_key
+from services.dob_verification_service import dob_verification_service
 from dotenv import load_dotenv
 import logging
 
@@ -38,13 +39,24 @@ KOLLA_HEADERS = {
 async def get_appointment(request: GetAppointmentRequest, authenticated: bool = Depends(require_api_key)):
     """
     Retrieves existing appointment information for a patient using Kolla API filters
-    Parameters: phone (required)
+    Parameters: phone (required), dob (required for verification)
     Used for rescheduling and confirming appointments
     Note: Matching is performed by phone number for accurate patient identification.
+    DOB verification is required for accessing personal information.
     """
     try:
-       
         logger.info(f"Fetching appointments for patient phone: {request.phone}")
+        
+        # First verify DOB against Kolla API
+        is_verified, verification_message, contact_data = await dob_verification_service.verify_dob(
+            request.phone, request.dob
+        )
+        
+        if not is_verified:
+            logger.warning(f"DOB verification failed for phone: {request.phone} - {verification_message}")
+            raise HTTPException(status_code=403, detail=f"DOB verification failed: {verification_message}")
+        
+        logger.info(f"✅ DOB verified for phone: {request.phone}")
         
         # Normalize phone number (remove spaces, dashes, etc.)
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
@@ -68,6 +80,7 @@ async def get_appointment(request: GetAppointmentRequest, authenticated: bool = 
         return {
             "success": True,
             "patient_phone": request.phone,
+            "dob_verified": True,
             "appointment": latest_appointment,
             "total_appointments": len(non_cancelled_appointments),
             "source": "kolla_api_filter"
@@ -239,19 +252,28 @@ def calculate_duration(start_time: str, end_time: str) -> Optional[int]:
         pass
     return None
 
-@router.get("/get_appointment_by_phone/{patient_phone}")
-async def get_appointment_by_phone_only(patient_phone: str, authenticated: bool = Depends(require_api_key)):
+@router.get("/get_appointment_by_phone/{patient_phone}/{patient_dob}")
+async def get_appointment_by_phone_only(patient_phone: str, patient_dob: str, authenticated: bool = Depends(require_api_key)):
     """
-    GET endpoint for retrieving appointments by phone number only
-    URL format: /api/get_appointment_by_phone/{patient_phone}
+    GET endpoint for retrieving appointments by phone number and DOB
+    URL format: /api/get_appointment_by_phone/{patient_phone}/{patient_dob}
     """
-    request = GetAppointmentRequest(phone=patient_phone)
+    request = GetAppointmentRequest(phone=patient_phone, dob=patient_dob)
     return await get_appointment(request)
 
 @router.post("/get_appointment/refresh")
 async def refresh_appointments_cache(request: GetAppointmentRequest, authenticated: bool = Depends(require_api_key)):
-    """Force refresh appointment data from Kolla API"""
+    """Force refresh appointment data from Kolla API with DOB verification"""
     try:
+        # First verify DOB against Kolla API
+        is_verified, verification_message, contact_data = await dob_verification_service.verify_dob(
+            request.phone, request.dob
+        )
+        
+        if not is_verified:
+            logger.warning(f"DOB verification failed for phone: {request.phone} - {verification_message}")
+            raise HTTPException(status_code=403, detail=f"DOB verification failed: {verification_message}")
+        
         # Normalize phone number
         normalized_phone = request.phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         
@@ -262,6 +284,7 @@ async def refresh_appointments_cache(request: GetAppointmentRequest, authenticat
             "success": True,
             "message": "Appointments data refreshed from Kolla API",
             "patient_phone": request.phone,
+            "dob_verified": True,
             "appointments_found": len(appointments),
             "appointments": appointments
         }

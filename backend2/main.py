@@ -42,7 +42,8 @@ from api import (
     reporting_api,
     save_transcripts_api,
     transcript_summary_api,
-    auth_api
+    auth_api,
+    otp_api
 )
 
 
@@ -265,6 +266,11 @@ create_debug_endpoints()
 
 # Include all new router-based APIs
 app.include_router(auth_api.router)
+
+# Mount OTP routes only when explicitly enabled to avoid exposing unused endpoints in production
+if os.getenv("ENABLE_OTP", "false").lower() == "true":
+    app.include_router(otp_api.router)
+
 app.include_router(appointment_details_api.router)
 app.include_router(availability_api.router)
 app.include_router(get_appointment_api.router)
@@ -291,6 +297,13 @@ if __name__ == "__main__":
     logging.info("   - DELETE /auth/keys (revoke API key)")
     logging.info("   - GET  /auth/test (test authentication)")
     logging.info("")
+    logging.info("📱 SMS OTP Module:")
+    logging.info("   - POST /api/otp/send (send OTP to phone number)")
+    logging.info("   - POST /api/otp/verify (verify OTP code)")
+    logging.info("   - POST /api/otp/status (check OTP status)")
+    logging.info("   - POST /api/otp/cleanup (cleanup expired OTPs)")
+    logging.info("   - GET  /api/otp/config (view OTP configuration)")
+    logging.info("")
     logging.info("📅 Schedule & Availability Module:")
     logging.info("   - GET  /api/availability?date=YYYY-MM-DD (returns 3 days)")
     logging.info("   - GET  /api/availability/refresh")
@@ -300,11 +313,13 @@ if __name__ == "__main__":
     logging.info("   - POST /api/reschedule_patient_appointment (flexible agent format)")
     logging.info("   - POST /api/reschedule_appointment (legacy)")
     logging.info("")
-    logging.info("📋 Core Patient APIs (with local caching):")
-    logging.info("   - POST /api/get_appointment (name, dob) - 24hr cache")
-    logging.info("   - GET  /api/get_appointment/{name}/{dob}")
-    logging.info("   - POST /api/get_contact (name, dob) - 24hr cache")
-    logging.info("   - GET  /api/get_contact/{name}/{dob}")
+    logging.info("📋 Core Patient APIs (with local caching and DOB verification):")
+    logging.info("   - POST /api/get_appointment (phone, dob) - 24hr cache")
+    logging.info("   - GET  /api/get_appointment/{phone}/{dob}")
+    logging.info("   - POST /api/get_contact (phone, dob) - 24hr cache")
+    logging.info("   - GET  /api/get_contact/{phone}/{dob}")
+    logging.info("   - POST /api/get_appointment_details (phone, dob)")
+    logging.info("   - POST /api/confirm_by_phone (phone, dob)")
     logging.info("")
     logging.info("👥 Patient Services Module:")
     logging.info("   - POST /api/send_new_patient_form")

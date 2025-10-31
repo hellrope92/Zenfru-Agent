@@ -100,12 +100,25 @@ class ConversationSummaryRequest(BaseModel):
 # New models for the core APIs
 class GetAppointmentRequest(BaseModel):
     phone: str
+    dob: str  # Required DOB for verification
+
+class AppointmentDetailsRequest(BaseModel):
+    phone: str
+    dob: str  # Required DOB for verification
+
+class ConfirmByPhoneRequest(BaseModel):
+    phone: str
+    dob: str  # Required DOB for verification
+    name: Optional[str] = None
+    confirmed: bool = True
+    confirmation_type: Optional[str] = "confirmationTypes/1"
+    notes: Optional[str] = None
 
 class GetContactRequest(BaseModel):
     phone: str  # Changed from name to phone for consistent patient identification
+    dob: str  # Required DOB for verification
     # Legacy support
-    name: Optional[str] = None  
-    dob: Optional[str] = None
+    name: Optional[str] = None
 
 class AvailabilityRequest(BaseModel):
     date: str  # YYYY-MM-DD format

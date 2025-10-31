@@ -8,3 +8,4 @@ schedule
 scipy
 pymongo
 openai
+twilio
