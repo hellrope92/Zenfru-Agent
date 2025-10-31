@@ -183,9 +183,13 @@ def find_existing_contact_by_id(contact_id: str) -> Optional[str]:
         return None
 
     try:
-        # Use Kolla filter API like in get_contact_api.py
-        contacts_url = f"{KOLLA_BASE_URL}/{contact_id}"
-              
+        # Build the contacts URL. Accept either numeric id (e.g. '10061') or full resource ('contacts/10061')
+        if isinstance(contact_id, str) and '/' not in contact_id:
+            contacts_url = f"{KOLLA_BASE_URL}/contacts/{contact_id}"
+        else:
+            # If caller passed a full resource name like 'contacts/10061', try to use it
+            contacts_url = f"{KOLLA_BASE_URL}/{contact_id}"
+
         logging.info(f"🔍 Searching for existing contact with ID: {contact_id}")
         logging.info(f"📞 Calling Kolla API: {contacts_url}")
         response = requests.get(contacts_url, headers=KOLLA_HEADERS, timeout=30)
@@ -193,7 +197,7 @@ def find_existing_contact_by_id(contact_id: str) -> Optional[str]:
         if response.status_code == 200:
             contact = response.json()
             if contact:
-                contact_id = contact.get('name')
+                contact_id = contact.get('name') or contact.get('remote_id')
                 contact_name = f"{contact.get('given_name', '')} {contact.get('family_name', '')}".strip()
                 logging.info(f"   📋 Found existing contact: {contact_name} (ID: {contact_id})")
                 return contact_id
@@ -821,8 +825,17 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
 
         if contact_id not in ['x', 'X']:
             logging.info(f"🔍 Checking for existing contact with ID: {contact_id}")
-            contact_id = find_existing_contact_by_id(contact_id)
-        
+            found_contact_resource = find_existing_contact_by_id(contact_id)
+            if not found_contact_resource:
+                logging.error(f"   ❌ Contact with ID {contact_id} not found in Kolla")
+                return {
+                    "success": False,
+                    "message": f"Contact with ID {contact_id} not found in Kolla.",
+                    "status": "error",
+                    "error": "contact_not_found"
+                }
+            contact_id = found_contact_resource
+            logging.info(f"   Using existing contact resource: {contact_id}")
         else:
             logging.info(f"   Creating new patient contact in Kolla...")
             contact_id = create_kolla_contact(contact_info, request.date)
@@ -835,8 +848,7 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
                     "error": "contact_creation_failed"
                 }
             else:
-                logging.info(f"   Using existing contact: {contact_id}")
-                is_new_contact = False
+                logging.info(f"   Created new contact: {contact_id}")
 
         # 2. Prepare appointment data for Kolla
         try:
@@ -881,7 +893,12 @@ async def book_patient_appointment(request: BookAppointmentRequest, getkolla_ser
             }
 
         # Auto-select provider based on appointment date/day and appointment type
-        is_cleaning_appointment = getattr(request, 'iscleaning', False)
+        # Normalize iscleaning to boolean (some clients may send "true"/"false" strings)
+        raw_is_cleaning = getattr(request, 'iscleaning', False)
+        if isinstance(raw_is_cleaning, str):
+            is_cleaning_appointment = raw_is_cleaning.strip().lower() in ("true", "1", "yes")
+        else:
+            is_cleaning_appointment = bool(raw_is_cleaning)
         auto_provider_id = None
         
         if is_cleaning_appointment:
