@@ -9,7 +9,15 @@ from pymongo import MongoClient
 
 secret = os.getenv("WEBHOOK_SECRET")
 
-client = MongoClient(os.getenv("MONGODB_CONNECTION_STRING"))
+_mongo_uri = os.getenv("MONGODB_CONNECTION_STRING")
+# Use certifi CA bundle for TLS in hosted environments
+try:
+    import certifi
+    client = MongoClient(_mongo_uri, tls=True, tlsCAFile=certifi.where())
+except Exception:
+    # Fallback to default behavior if certifi isn't available
+    client = MongoClient(_mongo_uri)
+
 db = client["calls"]
 
 router = APIRouter(prefix="/api", tags=["webhook"])

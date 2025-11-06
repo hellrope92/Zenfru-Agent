@@ -1,7 +1,9 @@
 import os, json, logging, smtplib
+import certifi
 from datetime import datetime, timedelta
 from pymongo import MongoClient
 from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
 from services.auth_service import require_api_key
 from zoneinfo import ZoneInfo
 from datetime import timezone
@@ -11,7 +13,9 @@ from email.mime.multipart import MIMEMultipart
 
 # env + db setup
 secret = os.getenv("WEBHOOK_SECRET")
-client = MongoClient(os.getenv("MONGODB_CONNECTION_STRING"))
+_mongo_uri = os.getenv("MONGODB_CONNECTION_STRING")
+# Ensure pymongo uses a known CA bundle in containerized environments
+client = MongoClient(_mongo_uri, tls=True, tlsCAFile=certifi.where())
 db = client["calls"]
 
 router = APIRouter(prefix="/api", tags=["transcripts"])
@@ -269,7 +273,7 @@ Here are the calls to analyze:
     return parsed_json
 
 @router.get("/generate_summary_email")
-async def generate_summary_email(authenticated: bool = Depends(require_api_key)):
+async def generate_summary_email(dry_run: bool = False, test_recipient: Optional[str] = None, authenticated: bool = Depends(require_api_key)):
     """
     Generate a formatted summary email (HTML) using the structured JSON
     from daily_summary() and call count from get_cleaned_transcripts_last_24h().
@@ -284,8 +288,22 @@ async def generate_summary_email(authenticated: bool = Depends(require_api_key))
     smtp_user = os.getenv("EMAIL_USERNAME")
     smtp_pass = os.getenv("EMAIL_PASSWORD")
     sender_name = "Zenfru AI Assistant"
-    recipients = [r.strip() for r in os.getenv("DAILY_EMAIL_RECIPIENTS", "").split(",") if r.strip()]
-    cc_recipients = [r.strip() for r in os.getenv("DAILY_EMAIL_CC_RECIPIENTS", "").split(",") if r.strip()]
+    # Resolve recipients: allow test override (send only to that address) or use env var list
+    if test_recipient:
+        recipients = [test_recipient.strip()]
+        cc_recipients = []
+    else:
+        recipients = [r.strip() for r in os.getenv("DAILY_EMAIL_RECIPIENTS", "").split(",") if r.strip()]
+        cc_recipients = [r.strip() for r in os.getenv("DAILY_EMAIL_CC_RECIPIENTS", "").split(",") if r.strip()]
+
+    if dry_run:
+        # Return the structured summary JSON and intended recipients without sending mail
+        return {
+            "status": "dry_run",
+            "summary_json": summary_json,
+            "intended_recipients": recipients,
+            "cc": cc_recipients,
+        }
 
     if not recipients or not smtp_user or not smtp_pass:
         logging.warning("[Summary Email] Missing recipients or SMTP credentials, not sending email.")

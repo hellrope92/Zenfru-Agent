@@ -9,3 +9,4 @@ scipy
 pymongo
 openai
 twilio
+certifi
