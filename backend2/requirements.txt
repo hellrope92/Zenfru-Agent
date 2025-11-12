@@ -10,3 +10,5 @@ pymongo
 openai
 twilio
 certifi
+gspread
+oauth2client

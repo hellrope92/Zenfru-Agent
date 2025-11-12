@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Depends, Request
 from services.auth_service import require_api_key
+from services.call_analytics_service import get_analytics_service
 from pymongo import MongoClient
 
 
@@ -68,6 +69,14 @@ async def get_transcript(request: Request):
             "received_at_utc": now_utc,
             "payload": data
         })
+        
+        # Process analytics and push to Google Sheets
+        try:
+            analytics_service = get_analytics_service()
+            analytics_service.process_call(data)
+        except Exception as e:
+            print(f"Analytics processing error: {e}")
+            # Don't fail the webhook if analytics fails
 
     return {"status": "received"}
 

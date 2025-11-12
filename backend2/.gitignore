@@ -42,4 +42,7 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Migration scripts (run once, then delete)
+migrate_historical_data.py
+
 interaction_logs/
