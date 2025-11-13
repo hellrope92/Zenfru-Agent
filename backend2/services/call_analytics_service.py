@@ -70,15 +70,18 @@ class CallAnalyticsService:
             reason_data = data_collection.get("reason", {})
             call_type = reason_data.get("value") or "unknown"
             
-            # 4. Success/Failure determination
+            # 4. Success/Failure/Unknown determination
             call_successful = analysis.get("call_successful", "unknown")
             
-            # Map to success/failure
+            # Map to success/failure/unknown
             if call_successful == "success":
-                is_success = True
+                result_status = "Success"
+                failure_reason = None
+            elif call_successful == "unknown":
+                result_status = "Unknown"
                 failure_reason = None
             else:
-                is_success = False
+                result_status = "Failure"
                 # Try to determine failure reason
                 failure_reason = self._determine_failure_reason(data, metadata, analysis)
             
@@ -93,7 +96,7 @@ class CallAnalyticsService:
                 "call_type": call_type,
                 "call_status": call_status,
                 "duration_secs": duration_secs,
-                "is_success": is_success,
+                "result_status": result_status,
                 "failure_reason": failure_reason
             }
             
@@ -107,6 +110,9 @@ class CallAnalyticsService:
         call_duration = metadata.get("call_duration_secs", 0)
         transcript = data.get("transcript", [])
         transcript_length = len(transcript)
+        
+        # Get transcript summary for context
+        transcript_summary = analysis.get("transcript_summary", "")
         
         # Check for system errors first
         error = metadata.get("error")
@@ -138,10 +144,33 @@ class CallAnalyticsService:
             
             # Check last user message for context
             last_user_msg = user_messages[-1].get("message", "").lower()
-            if any(word in last_user_msg for word in ["receptionist", "human", "person", "transfer"]):
-                return "Escalation Request: Patient wanted human receptionist, then hung up"
-            elif any(word in last_user_msg for word in ["bye", "thank", "okay", "ok"]):
+            
+            # Check if patient wanted escalation (human/receptionist/transfer)
+            wanted_human = any(word in last_user_msg for word in ["receptionist", "human", "person", "transfer", "assistant"])
+            
+            # Natural conversation end
+            if any(word in last_user_msg for word in ["bye", "thank", "okay", "ok"]):
+                # Use transcript summary for detailed context if available
+                if transcript_summary and len(transcript_summary) > 50:
+                    summary_lower = transcript_summary.lower()
+                    # Check if there was an agent limitation
+                    if "unable to" in summary_lower or "could not" in summary_lower or "couldn't" in summary_lower:
+                        summary_snippet = transcript_summary[:150].strip()
+                        summary_snippet = summary_snippet.replace("The user called", "User called")
+                        summary_snippet = summary_snippet.replace("The patient called", "Patient called")
+                        return f"Agent limitation: {summary_snippet}..."
+                
                 return "Natural End: Patient ended call after normal conversation"
+            
+            # Patient wanted escalation but hung up
+            if wanted_human:
+                if transcript_summary and len(transcript_summary) > 50:
+                    summary_snippet = transcript_summary[:120].strip()
+                    summary_snippet = summary_snippet.replace("The user called", "User called")
+                    summary_snippet = summary_snippet.replace("The patient called", "Patient called")
+                    return f"Agent limitation: {summary_snippet}"
+                
+                return "Agent limitation: Patient wanted to speak with human staff"
             
             return "Mid-Call Hangup: Patient hung up during conversation (reason unclear)"
         
@@ -197,7 +226,7 @@ class CallAnalyticsService:
                 metrics["call_type"],
                 metrics["call_status"],
                 metrics["duration_secs"],
-                "Success" if metrics["is_success"] else "Failure",
+                metrics["result_status"],
                 metrics["failure_reason"] or ""
             ]
             
