@@ -51,13 +51,14 @@ def init_sheets():
             "Call Status",
             "Duration (sec)",
             "Result",
-            "Failure Reason"
+            "Failure Reason",
+            "Call Summary"
         ]
         
-        sheet.update('A1:G1', [headers])
+        sheet.update('A1:H1', [headers])
         
         # Format header row (bold)
-        sheet.format('A1:G1', {
+        sheet.format('A1:H1', {
             "textFormat": {"bold": True},
             "backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}
         })
