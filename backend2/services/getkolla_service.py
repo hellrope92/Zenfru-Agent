@@ -7,6 +7,7 @@ import logging
 import requests
 import os
 from typing import Dict, Any, List, Optional
+from services.service_status_sheet import update_kolla_integration, update_fastapi_backend
 from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
@@ -199,29 +200,38 @@ class GetKollaService:
             logger.error(f"Error getting available slots for {service_type} on {target_date}: {e}")
             return []
     def get_booked_appointments(self, start_date: datetime, end_date: datetime) -> List[Dict[str, Any]]:
-        """Fetch booked appointments from Kolla API for the given date range"""
+        """Fetch booked appointments from Kolla API for the given date range.
+
+        Updates the Service Status sheet for Kolla Integration and Backend.
+        """
         try:
             url = f"{self.base_url}/appointments"
-            
-            # Add date filtering parameters if the API supports them
+
             params = {
                 "start_date": start_date.strftime("%Y-%m-%d"),
                 "end_date": end_date.strftime("%Y-%m-%d")
             }
-            
+
             response = requests.get(url, headers=self.headers, params=params)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 appointments = data.get("appointments", [])
                 logger.info(f"Fetched {len(appointments)} booked appointments from Kolla API")
+                update_kolla_integration(True, "Fetched appointments successfully")
+                update_fastapi_backend(True, "Kolla appointments fetch OK")
                 return appointments
             else:
                 logger.error(f"Error fetching appointments: {response.status_code} - {response.text}")
+                update_kolla_integration(False, f"HTTP {response.status_code} fetching appointments")
+                update_fastapi_backend(False, "Kolla appointments fetch error")
                 return []
-                
+
         except Exception as e:
-            logger.error(f"Error fetching booked appointments: {e}")    
+            logger.error(f"Error fetching booked appointments: {e}")
+            update_kolla_integration(False, f"Exception: {e.__class__.__name__}")
+            update_fastapi_backend(False, "Kolla appointments fetch exception")
+            return []
     def _parse_appointment_time(self, appointment: Dict[str, Any], field_name: str = "wall_start_time") -> Optional[datetime]:
         """Parse appointment time from Kolla API response"""
         try:

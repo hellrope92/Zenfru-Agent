@@ -8,6 +8,7 @@ from services.auth_service import require_api_key
 from zoneinfo import ZoneInfo
 from datetime import timezone
 from openai import OpenAI
+from services.service_status_sheet import update_openai_usage, update_fastapi_backend
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -267,7 +268,10 @@ Here are the calls to analyze:
 
     try:
         parsed_json = json.loads(raw_output)
+        update_openai_usage(True, "Summarized call transcripts successfully")
+        update_fastapi_backend(True, "/api/daily_summary OpenAI success")
     except json.JSONDecodeError:
+        update_openai_usage(False, "OpenAI JSON parse error")
         return {"error": "Invalid JSON from summary", "raw_output": raw_output}
 
     return parsed_json
@@ -280,6 +284,7 @@ async def generate_summary_email(dry_run: bool = False, test_recipient: Optional
     Email is sent to DAILY_EMAIL_RECIPIENTS using SMTP.
     """
     summary_json = await daily_summary()
+    update_fastapi_backend(True, "/api/generate_summary_email summary prepared")
     calls_last_24h = await get_cleaned_transcripts_last_24h()
     total_calls = len(calls_last_24h)
 

@@ -15,6 +15,7 @@ import uvicorn
 import os
 from pathlib import Path
 import logging
+from services.service_status_sheet import update_fastapi_backend
 
 # Import services
 from services.getkolla_service import GetKollaService
@@ -131,6 +132,21 @@ app = FastAPI(
 
 # Mount the directory containing the logo as a static directory
 app.mount("/static", StaticFiles(directory=Path(__file__).parent), name="static")
+
+# Backend status middleware (updates sheet row for FASTAPI Backend)
+@app.middleware("http")
+async def backend_status_middleware(request, call_next):
+    path = request.url.path
+    try:
+        response = await call_next(request)
+        if response.status_code < 400:
+            update_fastapi_backend(True, f"{path} OK")
+        else:
+            update_fastapi_backend(False, f"{path} HTTP {response.status_code}")
+        return response
+    except Exception as e:
+        update_fastapi_backend(False, f"{path} Exception: {e.__class__.__name__}")
+        raise
 
 # Initialize GetKolla service
 getkolla_service = GetKollaService()

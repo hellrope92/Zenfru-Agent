@@ -115,16 +115,19 @@ class CallAnalyticsService:
             self.sheet = None
     
     def analyze_call(self, payload):
-        """
-        Analyze a call transcript and extract metrics
-        
-        Returns:
-            dict: Call metrics including call type, status, duration, failure reason
+        """Analyze a call transcript and extract metrics for Google Sheets.
+        Returns a dict with: timestamp, conversation_id, call_type, call_status,
+        duration_secs, result_status (Success/Failure), failure_reason (optional),
+        call_summary.
         """
         try:
             data = payload.get("data", {}) or {}
             metadata = data.get("metadata") or {}
             analysis = data.get("analysis") or {}
+            transcript = data.get("transcript") or []
+            unresolved_intent = False  # tracks intent expressed but not resolved
+            # Count user messages early for special classification rules
+            user_msg_count = sum(1 for t in transcript if t.get("role") == "user")
             
             # 1. Basic info
             conversation_id = data.get("conversation_id", "unknown")
@@ -161,12 +164,9 @@ class CallAnalyticsService:
 
             # Callback request detection (only if still unknown or general query)
             if call_type in ["unknown", "general query"]:
-                user_text_all = " ".join([
-                    (t.get("message") or "").lower() for t in (data.get("transcript") or [])
-                ])
-                user_messages_only = " ".join([
-                    (t.get("message") or "").lower() for t in (data.get("transcript") or []) if t.get("role") == "user"
-                ])
+                lower_messages = [(t.get("message") or "").lower() for t in transcript]
+                user_text_all = " ".join(lower_messages)
+                user_messages_only = " ".join([m for t, m in zip(transcript, lower_messages) if t.get("role") == "user"])
                 summary_lower = call_summary.lower()
 
                 # 3a. Identify explicit callback intent
@@ -184,13 +184,78 @@ class CallAnalyticsService:
                         "could not determine call reason", "not enough information", "unable to determine the outcome",
                         "insufficient context"
                     ]
-                    user_msg_count = sum(1 for t in (data.get("transcript") or []) if t.get("role") == "user")
-                    total_turns = len(data.get("transcript") or [])
-                    too_short_numeric = duration_secs < 12 or total_turns < 3 or user_msg_count == 0
+                    user_msg_count_local = sum(1 for t in transcript if t.get("role") == "user")
+                    total_turns = len(transcript)
+                    too_short_numeric = duration_secs < 12 or total_turns < 3 or user_msg_count_local == 0
                     mentions_incomplete = any(p in summary_lower for p in incomplete_phrases) or any(p in user_text_all for p in incomplete_phrases)
 
                     if too_short_numeric or mentions_incomplete:
                         call_type = "incomplete transcript"
+
+            # Summary-based overrides and classification
+            if call_summary:
+                summary_lower = call_summary.lower()
+                resolution_keywords = [
+                    # Booking
+                    "appointment booked", "appointment scheduled", "booked for", "scheduled for", "your appointment is set",
+                    "successfully scheduled", "successfully booked",
+                    # Confirmation
+                    "confirmed for", "appointment confirmed", "confirmed the appointment", "appointment was confirmed",
+                    "appointment successfully confirmed", "successfully confirmed", "confirmation completed",
+                    # Rescheduling
+                    "rescheduled", "successfully rescheduled", "reschedule completed", "moved to", "updated to",
+                    # Callback logged (resolution via callback)
+                    "callback request logged", "logged a callback request", "successfully logged a callback request",
+                    "logged a callback", "callback details confirmed", "confirmed the callback details",
+                    "will call you back", "we will call you back"
+                ]
+                intent_keywords = [
+                    "schedule", "book", "appointment", "reschedul", "confirm", "callback", "call back"
+                ]
+                has_resolution = any(k in summary_lower for k in resolution_keywords)
+                has_intent_only = (not has_resolution) and any(k in summary_lower for k in intent_keywords)
+                agent_last = transcript and transcript[-1].get("role") == "agent"
+
+                # If intent present but no resolution and agent spoke last (waiting on user)
+                # retain original intent instead of forcing 'incomplete transcript'
+                if has_intent_only and agent_last and call_type in ["booking", "rescheduling", "confirmation", "general query", "unknown", "incomplete transcript"]:
+                    # Derive an intent type if current is generic/unknown/incomplete
+                    if call_type in ["general query", "unknown", "incomplete transcript"]:
+                        if "reschedul" in summary_lower:
+                            call_type = "rescheduling"
+                        elif "confirm" in summary_lower:
+                            call_type = "confirmation"
+                        elif "schedule" in summary_lower or "book" in summary_lower or "appointment" in summary_lower:
+                            call_type = "booking"
+                    unresolved_intent = True
+                # Also catch greeting + inquiry patterns without progress
+                if ("greeted" in summary_lower or "inquired" in summary_lower) and has_intent_only and not has_resolution:
+                    unresolved_intent = True
+
+                # Rescheduling via logged callback: treat as rescheduling not incomplete
+                if ("reschedul" in summary_lower) and any(cb in summary_lower for cb in ["callback request", "logged a callback", "callback details confirmed"]):
+                    if call_type == "incomplete transcript":
+                        call_type = "rescheduling"
+
+                # Positive success signals should set explicit call types regardless of last speaker
+                negative_markers = [
+                    "unable to", "was unable to", "not able to", "couldn't", "failed to", "cannot", "can't",
+                    "didn't manage to", "did not manage to"
+                ]
+                is_positive = not any(n in summary_lower for n in negative_markers)
+                if is_positive:
+                    if any(p in summary_lower for p in [
+                        "confirmed the appointment", "appointment was confirmed", "appointment confirmed", "successfully confirmed", "confirmation completed"
+                    ]):
+                        call_type = "confirmation"
+                    elif any(p in summary_lower for p in [
+                        "appointment booked", "appointment scheduled", "booked for", "scheduled for", "successfully scheduled", "successfully booked", "your appointment is set"
+                    ]):
+                        call_type = "booking"
+                    elif any(p in summary_lower for p in [
+                        "rescheduled", "successfully rescheduled", "reschedule completed", "moved to", "updated to"
+                    ]):
+                        call_type = "rescheduling"
 
             # As a final fallback, ask AI to classify if still unknown
             if call_type == "unknown":
@@ -200,30 +265,100 @@ class CallAnalyticsService:
                 if ai_summary and not call_summary:
                     call_summary = ai_summary
             
-            # 4. Success/Failure/Unknown determination
+            # 4. Success/Failure determination (eliminated 'Unknown' result status)
             call_successful = analysis.get("call_successful", "unknown")
-            
-            # Map to success/failure/unknown
+
             if call_successful == "success":
                 result_status = "Success"
                 failure_reason = None
-            elif call_successful == "unknown":
-                result_status = "Unknown"
-                failure_reason = None
             else:
-                result_status = "Failure"
-                # Try to determine failure reason
+                # Attempt to derive a failure reason for both explicit failures and previously 'unknown'
                 failure_reason = self._determine_failure_reason(data, metadata, analysis)
-                
-                # If failure reason is None (natural end), mark as Success instead
+
+                # user_msg_count already computed above
+
+                # If the summary shows a resolved outcome via a logged callback (e.g., reschedule via callback),
+                # remove AI-limitation failures and treat as success.
+                summary_lower_post = (call_summary or "").lower()
+                callback_resolution_markers = [
+                    "callback request logged", "logged a callback request", "successfully logged a callback request",
+                    "logged a callback", "callback details confirmed", "confirmed the callback details"
+                ]
+                if failure_reason and any(m in summary_lower_post for m in callback_resolution_markers):
+                    # Only clear failure if the summary indicates intent (reschedule/book/confirm) and no strong negatives
+                    if any(x in summary_lower_post for x in ["reschedul", "book", "schedule", "confirm"]):
+                        if not any(n in summary_lower_post for n in [
+                            "unable to", "was unable to", "not able to", "couldn't", "failed to", "cannot", "can't",
+                            "didn't manage to", "did not manage to"
+                        ]):
+                            failure_reason = None
+
+                # Prefer specific AI limitation: transfer to receptionist not supported
+                transfer_markers = [
+                    "transfer", "receptionist", "front desk", "connect me", "patch me", "speak with", "talk to"
+                ]
+                transfer_inability_markers = [
+                    "unable to transfer", "cannot transfer", "can't transfer", "did not transfer", "didn't transfer", "couldn't transfer"
+                ]
+                has_transfer_intent = any(k in summary_lower_post for k in transfer_markers)
+                has_transfer_inability = any(k in summary_lower_post for k in transfer_inability_markers)
+                if (has_transfer_intent and (has_transfer_inability or "assistant" in summary_lower_post or "receptionist" in summary_lower_post)):
+                    specific_limitation = "AI limitation: Agent cannot transfer calls to receptionist"
+                    if (not failure_reason) or failure_reason.startswith("AI limitation") or failure_reason.startswith("Incomplete Transcript") or failure_reason.startswith("Mid-Call Hangup"):
+                        failure_reason = specific_limitation
+
+                # If summary clearly indicates abrupt end/incomplete, prefer hangup over generic AI limitation
+                incomplete_markers = [
+                    "conversation is incomplete", "ends abruptly", "abruptly", "incomplete transcript", "no further interaction",
+                    "insufficient information", "too short to determine"
+                ]
+                if failure_reason and failure_reason.startswith("AI limitation") and any(m in summary_lower_post for m in incomplete_markers) and not has_transfer_intent:
+                    failure_reason = "Mid-Call Hangup: Patient hung up during conversation"
+
+                # Criteria for treating as failure when previously 'unknown':
+                # - No user messages
+                # - Incomplete transcript classification
+                # - A derived failure_reason exists
+                # - Very short duration / early hangup / timeout handled in failure_reason helper
+                if call_successful == "unknown" and failure_reason is None and (call_type == "incomplete transcript" or user_msg_count == 0):
+                    # Provide explicit reason if none inferred (unify incomplete wording with standard hangup phrasing)
+                    failure_reason = "No User Input: Patient did not respond" if user_msg_count == 0 else "Mid-Call Hangup: Patient hung up during conversation"
+
                 if failure_reason is None:
-                    result_status = "Success"
+                    # If unresolved intent (patient dropped after expressing intent) treat as failure
+                    if unresolved_intent:
+                        failure_reason = "Mid-Call Hangup: Patient hung up during conversation"
+                        result_status = "Failure"
+                    elif call_type == "incomplete transcript":
+                        # Prefer hangup wording if summary reflects abrupt ending/incomplete conversation
+                        summary_lower_post = (call_summary or "").lower()
+                        abrupt_markers = [
+                            "ends abruptly", "ended abruptly", "abruptly", "conversation is incomplete", "incomplete transcript",
+                            "no further interaction", "stopped responding", "hung up"
+                        ]
+                        if any(m in summary_lower_post for m in abrupt_markers):
+                            failure_reason = "Mid-Call Hangup: Patient hung up during conversation"
+                        else:
+                            failure_reason = "Incomplete Transcript: Conversation ended before resolution"
+                        result_status = "Failure"
+                    else:
+                        result_status = "Success"
+                else:
+                    result_status = "Failure"
             
             # Timestamp
             start_time = metadata.get("start_time_unix_secs")
             timestamp = (datetime.fromtimestamp(start_time, tz=ZoneInfo("America/New_York")) 
                         if start_time else datetime.now(ZoneInfo("America/New_York")))
             
+            # Final override: if patient never spoke, classify as no conversation with blank-style result
+            if user_msg_count == 0:
+                call_type = "no conversation"
+                # Use dash to indicate N/A result per requirement
+                result_status = "-"
+                # Failure reason should be empty (None so downstream becomes blank string)
+                failure_reason = None
+
             return {
                 "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
                 "conversation_id": conversation_id,

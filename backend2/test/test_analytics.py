@@ -198,19 +198,19 @@ def test_analytics():
     print("✓ Agent limitation case pushed to sheets")
     
     # Test unknown result case
-    print("\n8. Analyzing UNKNOWN result call...")
+    print("\n8. Analyzing previously UNKNOWN result call...")
     unknown_metrics = service.analyze_call(UNKNOWN_PAYLOAD)
     
-    print("✓ Unknown call analyzed:")
+    print("✓ Short/unknown-origin call analyzed:")
     print(f"   Conversation ID: {unknown_metrics['conversation_id']}")
     print(f"   Call Type: {unknown_metrics['call_type']}")
     print(f"   Duration: {unknown_metrics['duration_secs']} seconds")
     print(f"   Result: {unknown_metrics['result_status']}")
     print(f"   Failure Reason: {unknown_metrics['failure_reason']}")
     
-    print("\n9. Pushing UNKNOWN call to Google Sheets...")
+    print("\n9. Pushing short call to Google Sheets...")
     service.push_to_sheets(unknown_metrics)
-    print("✓ Unknown case pushed to sheets")
+    print("✓ Short call case pushed to sheets")
     
     # Summary
     print("\n" + "=" * 60)
@@ -219,7 +219,7 @@ def test_analytics():
     print(f"   ✓ Success call - Result: Success")
     print(f"   ✓ Failure call - Result: Failure")
     print(f"   ✓ Agent limitation - Result: Failure (with detailed reason)")
-    print(f"   ✓ Unknown call - Result: Unknown (no failure reason)")
+    print(f"   ✓ Short call - Result: Failure (hangup/incomplete)")
     spreadsheet_id = os.getenv("GOOGLE_SPREADSHEET_ID")
     print(f"\n📊 View your data: https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
     print("=" * 60)
