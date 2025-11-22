@@ -6,7 +6,7 @@ python-dotenv
 pytz
 schedule
 scipy
-pymongo
+pymongo>=4.10.0
 openai
 twilio
 certifi
